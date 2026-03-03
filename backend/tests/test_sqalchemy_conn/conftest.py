@@ -47,13 +47,23 @@ def test_model(database_module):
 
 
 @pytest.fixture
-def database_module(monkeypatch, temp_db_path):
+def database_module(monkeypatch, temp_db_path, event_loop):
     """Reload database module with temporary database path."""
     # Set environment variable before importing/reloading
     monkeypatch.setenv("SQLITE_PATH", temp_db_path)
 
-    # Reload the database module to pick up new environment variable
+    # Import the current module
     import app.core.database
+    
+    # Dispose any existing engine before reloading
+    try:
+        if app.core.database._engine is not None:
+            # Use the event loop to run async dispose
+            event_loop.run_until_complete(app.core.database.dispose_engine())
+    except Exception:
+        pass  # Ignore errors during cleanup
+
+    # Reload the database module to pick up new environment variable
     importlib.reload(app.core.database)
 
     # Clear existing metadata to avoid table conflicts
