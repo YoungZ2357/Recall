@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # -------------------------------------------------------------------------
 # ProjectName: KnowledgeBaseRetriever
 # FileName: __init__.py.py

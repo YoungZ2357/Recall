@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # -------------------------------------------------------------------------
 # ProjectName: KnowledgeBaseRetriever
 # FileName: main.py
