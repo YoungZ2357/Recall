@@ -32,5 +32,8 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # File upload
+    upload_file_dir: str = Field(default="data/files", alias="UPLOAD_FILE_DIR")
+
 
 settings = Settings()
