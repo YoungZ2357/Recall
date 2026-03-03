@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recall"
+version = "0.1.0"
+description = "Local knowledge base retrieval service with intelligent reranking and context refinement."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    # Config
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.19",
+
+    # Vector DB
+    "qdrant-client>=1.9",
+
+    # Logging / Utils
+    "loguru>=0.7",
+]
+
+[project.optional-dependencies]
+# Sprint 2: Ingestion
+ingestion = [
+    "httpx>=0.27",          # API embedding 调用
+    "numpy>=1.26",          # 向量操作
+    "langchain-text-splitters>=0.2",  # 分块策略
+]
+
+# Sprint 2: 离线嵌入（可选，避免强制安装重依赖）
+local-embedding = [
+    "onnxruntime>=1.17",
+    "transformers>=4.40",
+    "tokenizers>=0.19",
+]
+
+# Sprint 3-4: Retrieval + Refiner + API
+api = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",  # 文件上传
+]
+
+# Sprint 5: MCP
+mcp = [
+    "mcp>=1.0",
+]
+
+# 开发工具
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "pre-commit>=3.7",
+]
+
+# 全量安装
+all = [
+    "recall[ingestion,local-embedding,api,mcp,dev]",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "ASYNC", # flake8-async
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
