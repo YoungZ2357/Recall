@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # Qdrant
     qdrant_host: str = Field(default="localhost", alias="QDRANT_HOST")
     qdrant_port: int = Field(default=6333, alias="QDRANT_PORT")
-    qdrant_collection: str = Field(default="recall", alias="QDRANT_COLLECTIONE")
+    qdrant_collection: str = Field(default="recall", alias="QDRANT_COLLECTION")
 
     # Embedding
     embedding_provider: str = Field(default="api", alias="EMBEDDING_PROVIDER")
