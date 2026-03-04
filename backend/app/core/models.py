@@ -1,11 +1,18 @@
 from datetime import UTC, datetime
 from uuid import UUID as PyUUID
+from enum import Enum
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
 from .database import Base
+
+class SyncStatus(str, Enum):
+    pending = "pending"
+    synced = "synced"
+    dirty = "dirty"
+    failed = "failed"
 
 
 class Document(Base):
@@ -26,6 +33,11 @@ class Document(Base):
         DateTime(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
         onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
+    sync_status: Mapped[SyncStatus] = mapped_column(
+        String(20),
+        default=SyncStatus.pending,
         nullable=False,
     )
 
@@ -70,3 +82,5 @@ class Chunk(Base):
         Index("ix_chunks_document_id_index", "document_id", "chunk_index"),
         UniqueConstraint("document_id", "chunk_index", name="uq_chunk_document_index"),
     )
+
+
