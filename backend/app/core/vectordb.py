@@ -6,6 +6,7 @@ All Qdrant SDK exceptions are converted to project-specific exceptions.
 """
 
 import logging
+from doctest import UnexpectedException
 from typing import Optional
 
 from qdrant_client import AsyncQdrantClient
@@ -30,6 +31,7 @@ from app.core.exceptions import (
     CollectionNotFoundError,
     EmbeddingDimensionMismatchError,
 )
+
 
 
 logger = logging.getLogger(__name__)
@@ -171,6 +173,8 @@ class QdrantService:
             return await self.client.get_collection(self.collection_name)
         except CollectionNotFoundError:
             return None
+        except UnexpectedResponse:
+            raise VectorDBError(f"Collection does not exist: {self.collection_name}")
         except Exception as e:
             raise VectorDBError(f"Failed to get collection info: {e}") from e
 
@@ -359,3 +363,77 @@ class QdrantService:
             return info.points_count
         except Exception as e:
             raise VectorDBError(f"Failed to count points: {e}") from e
+
+    async def count_by_filter(
+            self,
+            count_filter: Filter,
+    ) -> int:
+        """按条件统计 point 数量。
+
+        用于 Layer 1 健康检查：按 doc_id 过滤后与 SQLite 侧 chunk 数量比较。
+
+        Args:
+            count_filter: Qdrant Filter 条件
+
+        Returns:
+            满足条件的 point 数量
+
+        Raises:
+            VectorDBError: Qdrant operation failed
+        """
+        self._ensure_connected()
+        try:
+            result = await self.client.count(
+                collection_name=self.collection_name,
+                count_filter=count_filter,
+                exact=True,  # 精确计数，不用近似值
+            )
+            return result.count
+        except Exception as e:
+            raise VectorDBError(f"Failed to count points: {e}") from e
+
+    async def scroll_ids(
+            self,
+            scroll_filter: Filter,
+            batch_size: int = 100,
+    ) -> set[str]:
+        """按条件遍历所有 point，只收集 ID。
+
+        用于 Layer 2 健康检查：取出某 doc_id 下所有 point_id，
+        与 SQLite 侧 chunk_id 集合做双向差集。
+
+        不取 payload 和 vector，最小化传输量。
+
+        Args:
+            scroll_filter: Qdrant Filter 条件
+            batch_size: 单次 scroll 返回上限，默认 100
+
+        Returns:
+            满足条件的所有 point_id 集合
+
+        Raises:
+            VectorDBError: Qdrant operation failed
+        """
+        self._ensure_connected()
+        all_ids: set[str] = set()
+        next_offset = None
+
+        try:
+            while True:
+                points, next_offset = await self.client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=scroll_filter,
+                    limit=batch_size,
+                    offset=next_offset,
+                    with_payload=False,
+                    with_vectors=False,
+                )
+                all_ids.update(str(p.id) for p in points)
+
+                if next_offset is None:
+                    break
+
+            return all_ids
+
+        except Exception as e:
+            raise VectorDBError(f"Failed to scroll points: {e}") from e

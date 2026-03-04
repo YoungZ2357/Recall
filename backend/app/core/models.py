@@ -9,10 +9,10 @@ from sqlalchemy.sql import text
 from .database import Base
 
 class SyncStatus(str, Enum):
-    pending = "pending"
-    synced = "synced"
-    dirty = "dirty"
-    failed = "failed"
+    PENDING = "pending"
+    SYNCED = "synced"
+    DIRTY = "dirty"
+    FAILED = "failed"
 
 
 class Document(Base):
@@ -37,7 +37,7 @@ class Document(Base):
     )
     sync_status: Mapped[SyncStatus] = mapped_column(
         String(20),
-        default=SyncStatus.pending,
+        default=SyncStatus.PENDING,
         nullable=False,
     )
 
