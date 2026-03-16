@@ -12,6 +12,24 @@ class ChunkCreate(BaseModel):
     document_id: PyUUID
     chunk_index: int
     content: str
-    embedding: list[float]
+    # embedding: list[float]
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    # model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class DocumentQuery(BaseModel):
+    title: str | None = None
+    source_path: str | None = None
+
+
+class ChunkQuery(BaseModel):
+    document_id: PyUUID | None = None  
+    chunk_index: int | None = None
+
+
+class ChunkIngest(BaseModel):
+    """Schema for passing chunk data + embedding vector into ChunkManager.write_chunks."""
+    document_id: PyUUID
+    chunk_index: int
+    content: str
+    vector: list[float]

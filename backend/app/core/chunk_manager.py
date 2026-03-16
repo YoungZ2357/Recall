@@ -10,10 +10,11 @@ The caller must provide database session and Qdrant service instances.
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Literal, Optional
 from uuid import UUID
 
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +27,8 @@ from app.core.exceptions import (
     SyncError,
 )
 from app.core.models import Document, Chunk, SyncStatus
+from app.core.repository import ChunkRepository, DocumentRepository
+from app.core.schemas import ChunkCreate, ChunkIngest
 from app.core.vectordb import QdrantService
 
 logger = logging.getLogger(__name__)
@@ -135,6 +138,136 @@ class ChunkManager:
         if doc is None:
             raise DocumentNotFoundError(doc_id=doc_id)
         return doc
+
+    # ============================================================
+    # Data Operations (Dual-Write / Dual-Delete)
+    # ============================================================
+
+    @classmethod
+    async def write_chunks(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        doc_id: str,
+        chunks: list[ChunkIngest],
+    ) -> list[Chunk]:
+        """Write chunks to SQLite and Qdrant, then transition document to SYNCED.
+
+        Caller contract:
+            - On success: await session.commit() to persist SYNCED status.
+            - On SyncError: await session.commit() to persist FAILED status, then reraise.
+            - On other exceptions: await session.rollback().
+
+        Args:
+            session: Database session for SQLite operations
+            qdrant_service: Qdrant service instance
+            doc_id: Document UUID as string (must be in PENDING or DIRTY state)
+            chunks: List of ChunkIngest containing content and pre-computed vectors
+
+        Returns:
+            List of created Chunk ORM objects
+
+        Raises:
+            DocumentNotFoundError: Document does not exist
+            SyncError: Qdrant upsert failed; document transitioned to FAILED
+        """
+        if not chunks:
+            return []
+
+        # Validate document exists
+        doc = await cls._get_document(session, doc_id)
+
+        # NOTE: This method only appends new chunks; it does NOT remove existing ones.
+        # For DIRTY documents (re-embedding after content change), the caller must first
+        # delete the old chunks from both stores before calling write_chunks.
+        # A dedicated replace_chunks() method should be implemented in Sprint 2 (reindex flow)
+        # to encapsulate: delete old SQLite chunks + Qdrant points → write_chunks → SYNCED.
+        if doc.sync_status not in (SyncStatus.PENDING, SyncStatus.DIRTY):
+            raise SyncError(
+                doc_id=doc_id,
+                detail=f"write_chunks requires PENDING or DIRTY status, got {doc.sync_status.value}",
+            )
+
+        # Insert chunks into SQLite
+        chunk_creates = [
+            ChunkCreate(
+                document_id=chunk.document_id,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+            )
+            for chunk in chunks
+        ]
+        orm_chunks = await ChunkRepository.bulk_create(session, chunk_creates)
+
+        # Build Qdrant points — use current time for created_at to avoid
+        # async lazy-load of server_default attribute after flush
+        now_iso = datetime.now(timezone.utc).isoformat()
+        points = [
+            PointStruct(
+                id=str(orm_chunk.chunk_id),
+                vector=chunk.vector,
+                payload={
+                    "document_id": str(orm_chunk.document_id),
+                    "chunk_index": orm_chunk.chunk_index,
+                    "tags": [],
+                    "created_at": now_iso,
+                },
+            )
+            for orm_chunk, chunk in zip(orm_chunks, chunks)
+        ]
+
+        # Upsert to Qdrant; on failure mark document as FAILED
+        try:
+            await qdrant_service.upsert(points)
+        except Exception as e:
+            logger.error(f"Qdrant upsert failed for document {doc_id}: {e}")
+            await cls.transition_status(session, doc_id, SyncStatus.FAILED)
+            raise SyncError(
+                doc_id=doc_id,
+                detail=f"Qdrant upsert failed: {e}",
+            ) from e
+
+        await cls.transition_status(session, doc_id, SyncStatus.SYNCED)
+        return orm_chunks
+
+    @classmethod
+    async def delete_document(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        doc_id: str,
+    ) -> None:
+        """Delete document and all its chunks from both Qdrant and SQLite.
+
+        Deletion order: Qdrant first, then SQLite.
+        If Qdrant fails, SQLite is untouched and the operation can be retried.
+
+        Args:
+            session: Database session for SQLite operations
+            qdrant_service: Qdrant service instance
+            doc_id: Document UUID as string
+
+        Raises:
+            DocumentNotFoundError: Document does not exist
+            VectorDBError: Qdrant deletion failed; SQLite is unchanged
+        """
+        # Validate document exists
+        await cls._get_document(session, doc_id)
+
+        # Collect chunk IDs for Qdrant deletion
+        sqlite_chunks = await ChunkRepository.list_by_document(session, UUID(doc_id))
+        point_ids = [str(c.chunk_id) for c in sqlite_chunks]
+
+        # Delete from Qdrant first (rebuildable store)
+        try:
+            await qdrant_service.delete(point_ids)
+        except Exception as e:
+            logger.error(f"Qdrant delete failed for document {doc_id}: {e}")
+            raise  # SQLite untouched; caller can retry
+
+        # Delete document from SQLite (cascades to chunks via ORM relationship)
+        await DocumentRepository.delete(session, UUID(doc_id))
+        logger.info(f"Deleted document {doc_id} and {len(point_ids)} chunks from both stores")
 
     # ============================================================
     # Health Check (Consistency Verification)
@@ -327,6 +460,6 @@ class ChunkManager:
                 )
                 raise SyncError(
                     doc_id=doc_id,
-                    detail=f"Health check failed and status update failed: {e}"
-                ) from e
+                    detail=f"Health check failed and status update failed: {transition_error}"
+                ) from transition_error
             raise  # Always re-raise original HealthCheckError
