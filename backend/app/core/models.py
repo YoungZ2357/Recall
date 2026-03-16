@@ -74,6 +74,9 @@ class Chunk(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+    sync_status: Mapped[SyncStatus] = mapped_column(
+        String(20), default=SyncStatus.PENDING, index=True
+    )
 
     document: Mapped["Document"] = relationship(back_populates="chunks")
 

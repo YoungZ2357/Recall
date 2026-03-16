@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Chunk, Document, SyncStatus
@@ -102,6 +102,39 @@ class ChunkRepository:
         """Delete all Chunks belonging to doc_id. Returns deleted count."""
         result = await session.execute(
             delete(Chunk).where(Chunk.document_id == doc_id)
+        )
+        await session.flush()
+        return result.rowcount
+
+    @classmethod
+    async def list_by_document_and_status(
+        cls,
+        session: AsyncSession,
+        doc_id: UUID,
+        status: SyncStatus,
+    ) -> list[Chunk]:
+        """Return Chunks for a Document with given sync_status, ordered by chunk_index ASC."""
+        result = await session.execute(
+            select(Chunk)
+            .where(Chunk.document_id == doc_id, Chunk.sync_status == status)
+            .order_by(Chunk.chunk_index.asc())
+        )
+        return list(result.scalars().all())
+
+    @classmethod
+    async def bulk_update_status(
+        cls,
+        session: AsyncSession,
+        chunk_ids: list[UUID],
+        status: SyncStatus,
+    ) -> int:
+        """Bulk UPDATE sync_status for given chunk_ids. Returns updated row count."""
+        if not chunk_ids:
+            return 0
+        result = await session.execute(
+            update(Chunk)
+            .where(Chunk.chunk_id.in_(chunk_ids))
+            .values(sync_status=status)
         )
         await session.flush()
         return result.rowcount

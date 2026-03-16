@@ -10,9 +10,13 @@ The caller must provide database session and Qdrant service instances.
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from app.ingestion.embedder import BaseEmbedder
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
 from sqlalchemy import select, func
@@ -34,6 +38,16 @@ from app.core.vectordb import QdrantService
 logger = logging.getLogger(__name__)
 
 HealthCheckLevel = Literal["fast", "full"]
+
+@dataclass
+class ReindexResult:
+    total: int
+    succeeded: int
+    failed: int
+    failed_chunk_ids: list[str]
+    health_check_passed: bool
+    errors: list[str]
+
 
 
 class ChunkManager:
@@ -227,6 +241,8 @@ class ChunkManager:
                 detail=f"Qdrant upsert failed: {e}",
             ) from e
 
+        chunk_ids = [c.chunk_id for c in orm_chunks]
+        await ChunkRepository.bulk_update_status(session, chunk_ids, SyncStatus.SYNCED)
         await cls.transition_status(session, doc_id, SyncStatus.SYNCED)
         return orm_chunks
 
@@ -463,3 +479,127 @@ class ChunkManager:
                     detail=f"Health check failed and status update failed: {transition_error}"
                 ) from transition_error
             raise  # Always re-raise original HealthCheckError
+
+    # ============================================================
+    # Reindex (Re-embed existing chunks)
+    # ============================================================
+
+    @classmethod
+    async def reindex_document(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        embedder: "BaseEmbedder",
+        doc_id: str,
+        batch_size: int = 100,
+    ) -> ReindexResult:
+        """Re-embed all chunks for a document, overwriting Qdrant vectors.
+
+        Marks document and all chunks DIRTY before processing, then processes
+        in batches. Each batch is committed independently so partial progress
+        is preserved on failure. Ends with a full health check.
+
+        Args:
+            session: Database session for SQLite operations
+            qdrant_service: Qdrant service instance
+            embedder: Embedder used to generate new vectors
+            doc_id: Document UUID as string
+            batch_size: Number of chunks to process per batch
+
+        Returns:
+            ReindexResult with counts and health check outcome
+
+        Raises:
+            DocumentNotFoundError: Document does not exist
+            InvalidSyncStatusTransitionError: Document not in a reindexable state
+        """
+        # 1. Input validation
+        await cls._get_document(session, doc_id)
+        all_chunks = await ChunkRepository.list_by_document(session, UUID(doc_id))
+        if not all_chunks:
+            return ReindexResult(
+                total=0,
+                succeeded=0,
+                failed=0,
+                failed_chunk_ids=[],
+                health_check_passed=True,
+                errors=[],
+            )
+
+        # Extract needed data before any commits to avoid expired-object lazy-load issues
+        chunk_data = [
+            {
+                "chunk_id": c.chunk_id,
+                "document_id": c.document_id,
+                "chunk_index": c.chunk_index,
+                "content": c.content,
+            }
+            for c in all_chunks
+        ]
+        all_chunk_ids = [d["chunk_id"] for d in chunk_data]
+
+        # 2. Bulk mark DIRTY
+        await cls.transition_status(session, doc_id, SyncStatus.DIRTY)
+        await ChunkRepository.bulk_update_status(session, all_chunk_ids, SyncStatus.DIRTY)
+        await session.commit()
+
+        # 3. Batch processing
+        failed_chunk_ids: list[str] = []
+        errors: list[str] = []
+        succeeded = 0
+
+        for i in range(0, len(chunk_data), batch_size):
+            batch = chunk_data[i : i + batch_size]
+            batch_chunk_ids = [d["chunk_id"] for d in batch]
+
+            try:
+                vectors = await embedder.embed_batch([d["content"] for d in batch])
+                now_iso = datetime.now(timezone.utc).isoformat()
+                points = [
+                    PointStruct(
+                        id=str(d["chunk_id"]),
+                        vector=vector,
+                        payload={
+                            "document_id": str(d["document_id"]),
+                            "chunk_index": d["chunk_index"],
+                            "tags": [],
+                            "created_at": now_iso,
+                        },
+                    )
+                    for d, vector in zip(batch, vectors)
+                ]
+                await qdrant_service.upsert(points)
+                await ChunkRepository.bulk_update_status(session, batch_chunk_ids, SyncStatus.SYNCED)
+                await session.commit()
+                succeeded += len(batch)
+            except Exception as e:
+                logger.error(
+                    f"Batch reindex failed for document {doc_id}, "
+                    f"batch offset {i}: {e}"
+                )
+                await ChunkRepository.bulk_update_status(session, batch_chunk_ids, SyncStatus.FAILED)
+                await session.commit()
+                failed_chunk_ids.extend(str(cid) for cid in batch_chunk_ids)
+                errors.append(str(e))
+
+        # 4. Health check
+        health_check_passed = False
+        try:
+            await cls.health_check(session, qdrant_service, doc_id, level="full")
+            await cls.transition_status(session, doc_id, SyncStatus.SYNCED)
+            await session.commit()
+            health_check_passed = True
+        except HealthCheckError as e:
+            logger.error(f"Health check failed after reindex for document {doc_id}: {e}")
+            await cls.transition_status(session, doc_id, SyncStatus.FAILED)
+            await session.commit()
+            errors.append(str(e))
+
+        return ReindexResult(
+            total=len(chunk_data),
+            succeeded=succeeded,
+            failed=len(failed_chunk_ids),
+            failed_chunk_ids=failed_chunk_ids,
+            health_check_passed=health_check_passed,
+            errors=errors,
+        )
