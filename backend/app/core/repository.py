@@ -1,10 +1,20 @@
+import json
+from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.models import Chunk, Document, SyncStatus
+from app.core.models import Chunk, ChunkAccess, Document, SyncStatus
 from app.core.schemas import ChunkCreate, DocumentCreate
+
+
+@dataclass
+class AccessSummary:
+    """Aggregated access stats for a single chunk."""
+    last_accessed_at: datetime | None
+    access_count: int
 
 
 class DocumentRepository:
@@ -138,3 +148,81 @@ class ChunkRepository:
         )
         await session.flush()
         return result.rowcount
+
+    @classmethod
+    async def get_tags_by_ids(
+        cls, session: AsyncSession, chunk_ids: list[UUID]
+    ) -> dict[str, list[str]]:
+        """Return {chunk_id_str: [tag, ...]} for given chunk_ids.
+
+        Tags are stored as JSON-encoded list[str] in the `tags` column.
+        """
+        if not chunk_ids:
+            return {}
+        result = await session.execute(
+            select(Chunk.chunk_id, Chunk.tags).where(Chunk.chunk_id.in_(chunk_ids))
+        )
+        return {
+            str(row.chunk_id): json.loads(row.tags) if row.tags else []
+            for row in result.all()
+        }
+
+    @classmethod
+    async def get_document_weights_by_chunk_ids(
+        cls, session: AsyncSession, chunk_ids: list[UUID]
+    ) -> dict[str, float]:
+        """Return {chunk_id_str: document_weight} by joining chunks → documents."""
+        if not chunk_ids:
+            return {}
+        result = await session.execute(
+            select(Chunk.chunk_id, Document.weight)
+            .join(Document, Chunk.document_id == Document.document_id)
+            .where(Chunk.chunk_id.in_(chunk_ids))
+        )
+        return {str(row.chunk_id): row.weight for row in result.all()}
+
+
+class ChunkAccessRepository:
+    """Repository for append-only chunk access logs."""
+
+    @classmethod
+    async def record_access(
+        cls, session: AsyncSession, chunk_ids: list[UUID]
+    ) -> None:
+        """Batch insert access records for the given chunk_ids."""
+        if not chunk_ids:
+            return
+        accesses = [
+            ChunkAccess(access_id=uuid4(), chunk_id=cid)
+            for cid in chunk_ids
+        ]
+        session.add_all(accesses)
+        await session.flush()
+
+    @classmethod
+    async def get_access_summary(
+        cls, session: AsyncSession, chunk_ids: list[UUID]
+    ) -> dict[str, AccessSummary]:
+        """Return aggregated access stats for each chunk_id.
+
+        Returns:
+            {chunk_id_str: AccessSummary} — chunks with no access records are omitted.
+        """
+        if not chunk_ids:
+            return {}
+        result = await session.execute(
+            select(
+                ChunkAccess.chunk_id,
+                func.max(ChunkAccess.accessed_at).label("last_accessed_at"),
+                func.count(ChunkAccess.access_id).label("access_count"),
+            )
+            .where(ChunkAccess.chunk_id.in_(chunk_ids))
+            .group_by(ChunkAccess.chunk_id)
+        )
+        return {
+            str(row.chunk_id): AccessSummary(
+                last_accessed_at=row.last_accessed_at,
+                access_count=row.access_count,
+            )
+            for row in result.all()
+        }

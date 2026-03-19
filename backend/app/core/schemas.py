@@ -33,3 +33,12 @@ class ChunkIngest(BaseModel):
     chunk_index: int
     content: str
     vector: list[float]
+
+
+class RerankResult(BaseModel):
+    """Single reranked result with score breakdown."""
+    chunk_id: PyUUID
+    final_score: float
+    retrieval_score: float
+    metadata_score: float
+    retention_score: float

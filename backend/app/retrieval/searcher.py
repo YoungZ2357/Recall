@@ -18,16 +18,23 @@ class SearchQuery:
     text: str                             # Original query text
     embedding: list[float] | None = None  # Pre-computed vector (HyDE scenario)
     top_k: int = 20
-    score_threshold: float | None = None
+    score_threshold: float = 0.35         # Default from VECTOR_SCORE_THRESHOLD
     filters: dict[str, Any] | None = None
 
 
 @dataclass
 class SearchHit:
-    """Single retrieval result, unified format across all retrieval paths."""
-    chunk_id: str    # UUID
-    score: float     # Raw score from the retrieval path
-    source: str      # Path identifier: "vector" / "bm25"
+    """Single retrieval result, unified format across all retrieval paths.
+
+    Attributes:
+        chunk_id: UUID string.
+        score: Ranking score at the current stage — may be cosine similarity,
+               BM25 score, or normalized RRF fused score.
+        source: Path identifier: "vector" / "bm25" / "rrf".
+    """
+    chunk_id: str
+    score: float
+    source: str
 
 
 class BaseSearcher(ABC):
@@ -138,3 +145,68 @@ class BM25Searcher(BaseSearcher):
 
     async def search(self, query: SearchQuery) -> list[SearchHit]:
         raise NotImplementedError("BM25Searcher is not implemented yet")
+
+
+def reciprocal_rank_fusion(
+    hit_lists: list[list[SearchHit]],
+    k: int = 60,
+) -> list[SearchHit]:
+    """Merge multiple ranked SearchHit lists using Reciprocal Rank Fusion.
+
+    RRF score for a document = sum of 1/(k + rank_i) across all lists where
+    the document appears. Scores are then min-max normalized to [0, 1].
+
+    Requires at least 2 lists to trigger fusion; with 0 or 1 list the input
+    is returned as-is (no fusion applied).
+
+    No restriction on the origin of input lists — any ranked data that can be
+    projected to SearchHit (chunk_id + score) is a valid input. For example,
+    mixing retrieve results with rerank results (converted to SearchHit) in a
+    single RRF call is allowed.
+
+    Args:
+        hit_lists: Ranked hit lists from different retrieval paths.
+        k: RRF smoothing constant (default 60).
+
+    Returns:
+        Fused list of SearchHit sorted by descending normalized RRF score,
+        with source="rrf".
+    """
+    if not hit_lists:
+        return []
+    if len(hit_lists) == 1:
+        return hit_lists[0]
+
+    # Accumulate raw RRF scores
+    rrf_scores: dict[str, float] = {}
+    for hits in hit_lists:
+        # Defensive sort — lists should already be sorted desc by score
+        sorted_hits = sorted(hits, key=lambda h: h.score, reverse=True)
+        for rank, hit in enumerate(sorted_hits, start=1):
+            rrf_scores[hit.chunk_id] = rrf_scores.get(hit.chunk_id, 0.0) + 1.0 / (k + rank)
+
+    # Min-max normalization to [0, 1]
+    if not rrf_scores:
+        return []
+
+    raw_values = list(rrf_scores.values())
+    min_score = min(raw_values)
+    max_score = max(raw_values)
+    score_range = max_score - min_score
+
+    normalized: dict[str, float] = {}
+    if score_range > 0:
+        normalized = {
+            cid: (s - min_score) / score_range for cid, s in rrf_scores.items()
+        }
+    else:
+        normalized = {cid: 1.0 for cid in rrf_scores}
+
+    results = [
+        SearchHit(chunk_id=cid, score=round(s, 6), source="rrf")
+        for cid, s in normalized.items()
+    ]
+    results.sort(key=lambda h: h.score, reverse=True)
+
+    logger.debug("RRF merged %d lists → %d unique hits", len(hit_lists), len(results))
+    return results

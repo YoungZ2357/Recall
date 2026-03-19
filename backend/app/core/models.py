@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID as PyUUID
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
@@ -35,6 +35,9 @@ class Document(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+    weight: Mapped[float] = mapped_column(
+        Float, default=1.0, nullable=False, server_default=text("1.0")
+    )
     sync_status: Mapped[SyncStatus] = mapped_column(
         String(20),
         default=SyncStatus.PENDING,
@@ -63,6 +66,9 @@ class Chunk(Base):
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[str] = mapped_column(
+        Text, default="[]", nullable=False, server_default=text("'[]'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
@@ -87,3 +93,22 @@ class Chunk(Base):
     )
 
 
+class ChunkAccess(Base):
+    """Append-only access log for Ebbinghaus retention scoring."""
+    __tablename__ = "chunk_accesses"
+
+    access_id: Mapped[PyUUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True
+    )
+    chunk_id: Mapped[PyUUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("chunks.chunk_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    accessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+        index=True,
+    )

@@ -6,9 +6,13 @@
 - 仓库结构：见 @README.md
 
 ## Current Stage:
-- Sprint-1
+- 检索核心（P0）
 
-完整任务表见 @docs/recall-sprint-plan.md
+完整任务表见 @docs/backlog.md
+
+## 文档职责
+- **@docs/backlog.md**：任务规划、排期、功能提案 → 新增/变更规划内容写入此处
+- **@docs/design.md**：已实现功能的技术决策记录 → 功能落地后将关键设计决策写入此处
 
 ## Common Commands
 ```bash

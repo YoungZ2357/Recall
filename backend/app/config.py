@@ -30,6 +30,20 @@ class Settings(BaseSettings):
     llm_api_key: str | None = Field(default=None, alias="LLM_API_KEY")
     llm_model: str = Field(default="deepseek-v3", alias="LLM_MODEL")
 
+    # Reranker
+    reranker_alpha: float = Field(default=0.6, alias="RERANKER_ALPHA")
+    reranker_beta: float = Field(default=0.2, alias="RERANKER_BETA")
+    reranker_gamma: float = Field(default=0.2, alias="RERANKER_GAMMA")
+    reranker_s_base: float = Field(default=24.0, alias="RERANKER_S_BASE")
+    reranker_tag_fallback: float = Field(default=0.5, alias="RERANKER_TAG_FALLBACK")
+    reranker_score_threshold: float = Field(default=0.60, alias="RERANKER_SCORE_THRESHOLD")
+
+    # Vector search
+    vector_score_threshold: float = Field(default=0.35, alias="VECTOR_SCORE_THRESHOLD")
+
+    # RRF
+    rrf_k: int = Field(default=60, alias="RRF_K")
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
