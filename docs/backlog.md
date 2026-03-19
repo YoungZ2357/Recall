@@ -43,8 +43,8 @@
 | P0-2 | reranker — metadata_score | feature | tag 语义相似度（chunk tags vs query embedding cosine），文档级权重 | P0-1 |
 | P0-3 | reranker — Ebbinghaus 记忆衰减 | feature | retention 基于最近访问时间和频次的遗忘曲线，支持"优先近期"和"唤醒遗忘"模式 | P0-1 |
 | P0-4 | 访问记录追踪 | feature | SQLite 记录 chunk 被检索/命中的时间戳，供 Ebbinghaus 计算 | P0-3 |
-| P0-5 | 检索 pipeline 编排 | feature | 串联 query_transform → searcher → reranker，返回排序后的 chunk 列表 | P0-1 |
-| P0-6 | CLI search 命令 | feature | `python -m app.cli search "query"`，输出 top-k 结果及评分明细 | P0-5 |
+| ✅ P0-5 | 检索 pipeline 编排 | feature | 串联 query_transform → searcher → reranker，返回排序后的 chunk 列表 | P0-1 |
+| ✅ P0-6 | CLI search 命令 | feature | `python -m app.cli search "query"`，输出 top-k 结果及评分明细 | P0-5 |
 
 ---
 
@@ -111,6 +111,7 @@
 | Cross-Encoder reranker | 替代当前加权评分，需额外模型 |
 | 单元测试覆盖率 ≥ 70% | 重点：reranker 评分、refiner pipeline、chunk_manager 状态转换 |
 | 代码质量 | ruff lint + format、type hints 检查、docstring 补全 |
+| DAG 拓扑编排引擎 | 实现 topo_abstract.md 描述的完整算子编排系统：DAG 定义、拓扑验证、执行引擎。使 VectorSearcher/Reranker 适配 BaseRetriever/BaseReranker 接口，支持用户自定义检索-重排序拓扑。前置：operators.py 中的基类已定义 |
 
 ---
 

@@ -11,6 +11,7 @@ import typer
 
 from app.cli.ingest import ingest_app
 from app.cli.reindex import reindex_app
+from app.cli.search import search_app
 from app.config import settings
 
 logging.basicConfig(
@@ -25,6 +26,7 @@ app = typer.Typer(
 )
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(reindex_app, name="reindex")
+app.add_typer(search_app, name="search")
 
 if __name__ == "__main__":
     app()

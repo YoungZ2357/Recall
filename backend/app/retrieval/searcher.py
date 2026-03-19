@@ -140,6 +140,37 @@ class VectorSearcher(BaseSearcher):
         return Filter(must=conditions)
 
 
+def normalize_scores(hits: list[SearchHit]) -> list[SearchHit]:
+    """Min-max normalize SearchHit scores to [0, 1].
+
+    - Empty list → []
+    - Single element or all-equal scores → score=1.0
+    - Does not change sort order.
+    """
+    if not hits:
+        return []
+
+    scores = [h.score for h in hits]
+    min_s = min(scores)
+    max_s = max(scores)
+    score_range = max_s - min_s
+
+    if score_range > 0:
+        return [
+            SearchHit(
+                chunk_id=h.chunk_id,
+                score=round((h.score - min_s) / score_range, 6),
+                source=h.source,
+            )
+            for h in hits
+        ]
+    else:
+        return [
+            SearchHit(chunk_id=h.chunk_id, score=1.0, source=h.source)
+            for h in hits
+        ]
+
+
 class BM25Searcher(BaseSearcher):
     """SQLite FTS5 sparse recall — not yet implemented."""
 

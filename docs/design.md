@@ -66,4 +66,15 @@ $$
 
 > 职责分离：排序层只关心"谁排第几"，不关心"内容是什么"。同时为多路检索合并（BM25 + Vector + 未来路径）保持中间数据结构轻量，避免每条路径重复携带文本导致合并臃肿。
 
+### Pipeline topology (hardcoded)
+
+2026-03-19
+
+- 当前拓扑：VectorSearcher → Normalizer → Reranker → output
+- 拓扑在 `pipeline.py` 中硬编码，不可运行时切换
+- 算子抽象设计见 `docs/instructions/retrieval/topo_abstract.md`
+- 未来 DAG 编排引擎就绪后，当前拓扑将成为默认配置
+
+> Pipeline 末端统一完成内容填充（content hydration）和访问记录（access recording），保证所有调用方（CLI/API/MCP）自动获得 Ebbinghaus 追踪。Rerank session 与写操作 session 分离：rerank 只读，access recording 写入后 commit。
+
 ##

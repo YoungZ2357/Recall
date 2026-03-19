@@ -182,6 +182,33 @@ class ChunkRepository:
         return {str(row.chunk_id): row.weight for row in result.all()}
 
 
+    @classmethod
+    async def get_content_by_ids(
+        cls, session: AsyncSession, chunk_ids: list[UUID]
+    ) -> dict[str, str]:
+        """Return {chunk_id_str: content} for given chunk_ids."""
+        if not chunk_ids:
+            return {}
+        result = await session.execute(
+            select(Chunk.chunk_id, Chunk.content).where(Chunk.chunk_id.in_(chunk_ids))
+        )
+        return {str(row.chunk_id): row.content for row in result.all()}
+
+    @classmethod
+    async def get_document_titles_by_chunk_ids(
+        cls, session: AsyncSession, chunk_ids: list[UUID]
+    ) -> dict[str, str | None]:
+        """Return {chunk_id_str: document_title} by joining chunks → documents."""
+        if not chunk_ids:
+            return {}
+        result = await session.execute(
+            select(Chunk.chunk_id, Document.title)
+            .join(Document, Chunk.document_id == Document.document_id)
+            .where(Chunk.chunk_id.in_(chunk_ids))
+        )
+        return {str(row.chunk_id): row.title for row in result.all()}
+
+
 class ChunkAccessRepository:
     """Repository for append-only chunk access logs."""
 

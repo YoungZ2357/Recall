@@ -42,3 +42,14 @@ class RerankResult(BaseModel):
     retrieval_score: float
     metadata_score: float
     retention_score: float
+
+
+class RetrievalResult(BaseModel):
+    """Pipeline output: rerank scores + chunk content."""
+    chunk_id: PyUUID
+    final_score: float
+    retrieval_score: float
+    metadata_score: float
+    retention_score: float
+    content: str
+    document_title: str | None = None
