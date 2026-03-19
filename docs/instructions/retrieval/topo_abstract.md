@@ -124,17 +124,17 @@ Chunk → RetrieverB → Normalizer ↗
 - rerank分数重排序
 ```mermaid
 graph TD
-    A[开始: 原始Chunks] --> B[余弦相似度搜索]
-    B --> C[产生: list[SearchHit]]
+    A["开始: 原始Chunks"] --> B["余弦相似度搜索"]
+    B --> C["产生: list[SearchHit]"]
     
     %% 单一路径检查（无RRF融合）
-    C --> D{是否多条检索路径?}
-    D -- 否, 仅有一条路径 --> E[保留原始 list[SearchHit]]
+    C --> D{"是否多条检索路径?"}
+    D -- 否, 仅有一条路径 --> E["保留原始 list[SearchHit]"]
     
-    E --> F[Rerank重排序阶段]
-    F --> G[应用公式: score(x) 重新计算得分]
-    G --> H[按新得分降序排序]
-    H --> I[返回 Top K 结果]
+    E --> F["Rerank重排序阶段"]
+    F --> G["应用公式: score(x) 重新计算得分"]
+    G --> H["按新得分降序排序"]
+    H --> I["返回 Top K 结果"]
     
     %% 风格设置（提升可读性）
     classDef process fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
@@ -155,23 +155,23 @@ graph TD
 
 ```mermaid
 graph TD
-    Start[原始Chunks] --> Cosine[余弦相似度检索]
-    Start --> BM25[BM25检索]
+    Start["原始Chunks"] --> Cosine["余弦相似度检索"]
+    Start --> BM25["BM25检索"]
     
-    Cosine --> ResA[list[SearchHit] A]
-    BM25 --> ResB[list[SearchHit] B]
+    Cosine --> ResA["list[SearchHit] A"]
+    BM25 --> ResB["list[SearchHit] B"]
     
-    ResA --> Merge[merge函数]
+    ResA --> Merge["merge函数"]
     ResB --> Merge
     
-    Merge --> MultiList[list[list[SearchHit]]]
-    MultiList --> RRF[RRF函数]
+    Merge --> MultiList["list[list[SearchHit]]"]
+    MultiList --> RRF["RRF函数"]
     
-    RRF --> SingleList[list[SearchHit]]
-    SingleList --> Rerank[rerank阶段]
+    RRF --> SingleList["list[SearchHit]"]
+    SingleList --> Rerank["rerank阶段"]
     
-    Rerank --> Score[score(x)公式重排序]
-    Score --> TopK[返回top k]
+    Rerank --> Score["score(x)公式重排序"]
+    Score --> TopK["返回top k"]
 ```
 
 ### 3. 存在retireve-rerank融合的复杂拓扑结构
@@ -180,55 +180,55 @@ graph TD
 ```mermaid
 graph TD
     %% 起始节点
-    Start[原始Chunks]
+    Start["原始Chunks"]
     
     %% ========== 基础操作节点定义 ==========
     %% 检索操作
-    BM25_A[BM25检索]
-    BM25_B[BM25检索]
-    Cosine_B[余弦相似度检索]
-    Cosine_C[余弦相似度检索]
+    BM25_A["BM25检索"]
+    BM25_B["BM25检索"]
+    Cosine_B["余弦相似度检索"]
+    Cosine_C["余弦相似度检索"]
     
     %% 重排序规则
-    Rerank1[重排序规则1]
-    Rerank2[重排序规则2]
+    Rerank1["重排序规则1"]
+    Rerank2["重排序规则2"]
     
     %% 标准化操作（每次list[SearchHit]后强制跟随）
-    Norm1[normalize标准化]
-    Norm2[normalize标准化]
-    Norm3[normalize标准化]
-    Norm4[normalize标准化]
-    Norm5[normalize标准化]
-    Norm6[normalize标准化]
-    Norm7[normalize标准化]
-    Norm8[normalize标准化]
-    Norm9[normalize标准化]
+    Norm1["normalize标准化"]
+    Norm2["normalize标准化"]
+    Norm3["normalize标准化"]
+    Norm4["normalize标准化"]
+    Norm5["normalize标准化"]
+    Norm6["normalize标准化"]
+    Norm7["normalize标准化"]
+    Norm8["normalize标准化"]
+    Norm9["normalize标准化"]
     
     %% 中间结果节点
-    ListA1[list[SearchHit] A1]
-    ListA2[list[SearchHit] A2]
-    ListB1[list[SearchHit] B1]
-    ListB2[list[SearchHit] B2]
-    ListB3[list[SearchHit] B3]
-    ListB4[list[SearchHit] B4]
-    ListC1[list[SearchHit] C1]
-    ListD[list[SearchHit] D]
-    ListFinal[最终结果: list[SearchHit]]
+    ListA1["list[SearchHit] A1"]
+    ListA2["list[SearchHit] A2"]
+    ListB1["list[SearchHit] B1"]
+    ListB2["list[SearchHit] B2"]
+    ListB3["list[SearchHit] B3"]
+    ListB4["list[SearchHit] B4"]
+    ListC1["list[SearchHit] C1"]
+    ListD["list[SearchHit] D"]
+    ListFinal["最终结果: list[SearchHit]"]
     
     %% 融合操作节点
-    MergeB{merge检测: BM25+余弦}
-    MergeAD{merge检测: A与C}
-    MergeBD{merge检测: B与D}
+    MergeB{"merge检测: BM25+余弦"}
+    MergeAD{"merge检测: A与C"}
+    MergeBD{"merge检测: B与D"}
     
     %% RRF节点
-    RRF_B[RRF融合]
-    RRF_AD[RRF融合]
-    RRF_BD[RRF融合]
+    RRF_B["RRF融合"]
+    RRF_AD["RRF融合"]
+    RRF_BD["RRF融合"]
     
     %% 中间复合结构
-    ListOfListsB[list[list[SearchHit]] B]
-    ListOfListsAD[list[list[SearchHit]] AD]
-    ListOfListsBD[list[list[SearchHit]] BD]
+    ListOfListsB["list[list[SearchHit]] B"]
+    ListOfListsAD["list[list[SearchHit]] AD"]
+    ListOfListsBD["list[list[SearchHit]] BD"]
     
     %% ========== 路径A: BM25检索 -> 重排序规则1 ==========
     Start --> BM25_A
@@ -237,7 +237,7 @@ graph TD
     Norm1 --> Rerank1
     Rerank1 --> ListA2
     ListA2 --> Norm2
-    Norm2 --> PathA_Out[路径A输出]
+    Norm2 --> PathA_Out["路径A输出"]
     
     %% ========== 路径B: BM25+余弦检索 -> 重排序规则2 ==========
     Start --> BM25_B
@@ -258,13 +258,13 @@ graph TD
     Norm5 --> Rerank2
     Rerank2 --> ListB4
     ListB4 --> Norm6
-    Norm6 --> PathB_Out[路径B输出]
+    Norm6 --> PathB_Out["路径B输出"]
     
     %% ========== 路径C: 余弦检索 ==========
     Start --> Cosine_C
     Cosine_C --> ListC1
     ListC1 --> Norm7
-    Norm7 --> PathC_Out[路径C输出]
+    Norm7 --> PathC_Out["路径C输出"]
     
     %% ========== 融合A与C -> 新路径D ==========
     PathA_Out --> MergeAD
@@ -274,7 +274,7 @@ graph TD
     ListOfListsAD --> RRF_AD
     RRF_AD --> ListD
     ListD --> Norm8
-    Norm8 --> PathD_Out[路径D输出]
+    Norm8 --> PathD_Out["路径D输出"]
     
     %% ========== 融合B与D -> 最终结果 ==========
     PathB_Out --> MergeBD
