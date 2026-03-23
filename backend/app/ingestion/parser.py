@@ -121,3 +121,4 @@ def get_parser(file_path: str | Path) -> BaseParser:
 # ============================================================
 
 from app.ingestion.parsers import text  # noqa: F401, E402
+from app.ingestion.parsers import pdf  # noqa: F401, E402
