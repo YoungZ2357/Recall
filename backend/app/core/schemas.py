@@ -53,3 +53,19 @@ class RetrievalResult(BaseModel):
     retention_score: float
     content: str
     document_title: str | None = None
+
+
+class GenerateRequest(BaseModel):
+    """POST /generate request body."""
+    query: str
+    context: list[RetrievalResult]
+    max_tokens: int | None = None
+    temperature: float | None = None
+    stream: bool = False
+
+
+class GenerateResponse(BaseModel):
+    """POST /generate non-streaming response."""
+    answer: str
+    model: str
+    usage: dict[str, int] | None = None

@@ -1,5 +1,3 @@
-# -------------------------------------------------------------------------
-# ProjectName: KnowledgeBaseRetriever
-# FileName: __init__.py.py
-# Date: 2026/3/1 01:38
-# -------------------------------------------------------------------------
+from app.api.router import router
+
+__all__ = ["router"]

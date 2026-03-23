@@ -47,7 +47,7 @@ async def _run_search(
     from app.retrieval.reranker import Reranker
     from app.retrieval.searcher import VectorSearcher
 
-    session_factory, qdrant, embedder = await init_deps(settings)
+    session_factory, qdrant, embedder, _ = await init_deps(settings)
     try:
         searcher = VectorSearcher(qdrant, embedder)
         reranker = Reranker(embedder, settings)

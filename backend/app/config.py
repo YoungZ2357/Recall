@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Generation
     llm_api_key: str | None = Field(default=None, alias="LLM_API_KEY")
     llm_model: str = Field(default="deepseek-v3", alias="LLM_MODEL")
+    llm_base_url: str = Field(default="https://api.deepseek.com", alias="LLM_BASE_URL")
+    llm_max_tokens: int = Field(default=1024, alias="LLM_MAX_TOKENS")
+    llm_temperature: float = Field(default=0.7, alias="LLM_TEMPERATURE")
 
     # Reranker
     reranker_alpha: float = Field(default=0.6, alias="RERANKER_ALPHA")
@@ -43,6 +46,12 @@ class Settings(BaseSettings):
 
     # RRF
     rrf_k: int = Field(default=60, alias="RRF_K")
+
+    # CORS
+    cors_origins: list[str] = Field(
+        default=["http://localhost:5173", "http://localhost:3000"],
+        alias="CORS_ORIGINS",
+    )
 
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

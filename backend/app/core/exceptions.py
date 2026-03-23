@@ -306,3 +306,14 @@ class ConfigError(RecallError):
 
     status_code = 500
     message = "Wrong config"
+
+
+# ============================================================
+# Generation (LLM)
+# ============================================================
+
+class GenerationError(RecallError):
+    """Failed to generate LLM response"""
+
+    status_code = 502
+    message = "Failed to generate LLM response"
