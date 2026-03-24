@@ -32,6 +32,7 @@ ingestion = [
     "httpx>=0.27",          # API embedding 调用
     "numpy>=1.26",          # 向量操作
     "langchain-text-splitters>=0.2",  # 分块策略
+    "pymupdf>=1.24",        # PDF 文本解析（默认）
 ]
 
 # Sprint 2: 离线嵌入（可选，避免强制安装重依赖）

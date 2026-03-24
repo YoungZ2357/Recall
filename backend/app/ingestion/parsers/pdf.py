@@ -16,9 +16,11 @@ from app.ingestion.parser import BaseParser, ParseResult, register_parser
 _MARKER_TIMEOUT_S = 300
 
 
-@register_parser
 class MarkerCliParser(BaseParser):
-    """通过 marker_single CLI 解析 PDF，返回 Markdown 文本内容。"""
+    """Parse PDF via marker_single CLI, returning Markdown text.
+
+    Not auto-registered. Use --pdf-parser marker in the ingest CLI to select it.
+    """
 
     supported_extensions: ClassVar[set[str]] = {".pdf"}
 
