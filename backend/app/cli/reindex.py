@@ -49,7 +49,7 @@ def reindex(
 async def _run_reindex(doc_id: Optional[str], force_all: bool) -> None:
     from app.config import settings
 
-    session_factory, qdrant, embedder = await init_deps(settings)
+    session_factory, qdrant, embedder, _ = await init_deps(settings)
     try:
         async with session_factory() as session:
             # Determine target documents

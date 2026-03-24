@@ -13,7 +13,7 @@ from rich.table import Table
 
 from app.cli._init_deps import init_deps, teardown_deps
 from app.ingestion.chunker import get_chunker
-from app.ingestion.parser import _parser_registry, get_parser
+from app.ingestion.parser import BaseParser, _parser_registry, get_parser
 from app.ingestion.pipeline import IngestionPipeline
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,10 @@ ingest_app = typer.Typer(help="Ingest documents into the knowledge base.")
 @ingest_app.callback(invoke_without_command=True)
 def ingest(
     path: Annotated[Path, typer.Argument(help="File or directory to ingest.")],
+    pdf_parser: Annotated[
+        str,
+        typer.Option("--pdf-parser", help="PDF parser: pymupdf | marker"),
+    ] = "pymupdf",
     strategy: Annotated[
         str,
         typer.Option("--strategy", "-s", help="Chunk strategy: recursive | fixed_count"),
@@ -39,19 +43,28 @@ def ingest(
     ] = 64,
 ) -> None:
     """Ingest a single file or all supported files in a directory."""
-    asyncio.run(_run_ingest(path, strategy, chunk_size, chunk_overlap))
+    asyncio.run(_run_ingest(path, pdf_parser, strategy, chunk_size, chunk_overlap))
 
 
 async def _run_ingest(
     path: Path,
+    pdf_parser: str,
     strategy: str,
     chunk_size: int,
     chunk_overlap: int,
 ) -> None:
     from app.config import settings
 
-    session_factory, qdrant, embedder = await init_deps(settings)
+    session_factory, qdrant, embedder, _ = await init_deps(settings)
     try:
+        # Build parser factory: marker overrides the default pymupdf for .pdf
+        if pdf_parser == "marker":
+            from app.ingestion.parsers.pdf import MarkerCliParser
+            def parser_factory(p: Path) -> BaseParser:
+                return MarkerCliParser() if p.suffix.lower() == ".pdf" else get_parser(p)
+        else:
+            parser_factory = get_parser
+
         # Only pass chunk_size / chunk_overlap to strategies that support them
         kwargs = {}
         if strategy == "recursive":
@@ -59,7 +72,7 @@ async def _run_ingest(
 
         chunker = get_chunker(strategy, **kwargs)
         pipeline = IngestionPipeline(
-            parser_factory=get_parser,
+            parser_factory=parser_factory,
             chunker=chunker,
             embedder=embedder,
             session_factory=session_factory,

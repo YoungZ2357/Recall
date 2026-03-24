@@ -10,6 +10,7 @@ from app.config import Settings, settings as _default_settings
 from app.core.database import (
     create_fts_table,
     create_tables,
+    dispose_engine,
     get_session_factory,
     populate_fts_from_chunks,
 )
@@ -68,9 +69,10 @@ async def teardown_deps(
     embedder: APIEmbedder,
     generator: LLMGenerator | None = None,
 ) -> None:
-    """Close Qdrant connection, HTTP clients."""
+    """Close Qdrant connection, HTTP clients, and SQLAlchemy engine."""
     await qdrant.close()
     await embedder.aclose()
     if generator is not None:
         await generator.aclose()
+    await dispose_engine()
     logger.debug("Dependencies torn down")
