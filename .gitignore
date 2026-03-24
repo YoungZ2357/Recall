@@ -182,4 +182,7 @@ cython_debug/
 
 
 .idea
-#docs/instructions
+data
+docs/knowledge
+local
+docs/images
