@@ -7,7 +7,12 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings, settings as _default_settings
-from app.core.database import create_tables, get_session_factory
+from app.core.database import (
+    create_fts_table,
+    create_tables,
+    get_session_factory,
+    populate_fts_from_chunks,
+)
 from app.core.exceptions import ConfigError
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
@@ -30,9 +35,11 @@ async def init_deps(
     """
     cfg = cfg or _default_settings
 
-    # 1. Ensure SQLite tables exist
+    # 1. Ensure SQLite tables and FTS index exist
     await create_tables()
-    logger.debug("SQLite tables ready")
+    await create_fts_table()
+    await populate_fts_from_chunks()
+    logger.debug("SQLite tables and FTS index ready")
 
     # 2. Connect to Qdrant and ensure collection exists
     qdrant = QdrantService()

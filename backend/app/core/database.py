@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -148,6 +149,51 @@ async def drop_tables() -> None:
     try:
         async with get_engine().begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
+    except RecallError:
+        raise
+    except Exception as e:
+        raise DatabaseError(detail=str(e)) from e
+
+
+async def create_fts_table() -> None:
+    """Create FTS5 virtual table for BM25 search if not exists."""
+    try:
+        async with get_engine().begin() as conn:
+            await conn.execute(text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts "
+                "USING fts5("
+                "chunk_id UNINDEXED, "
+                "document_id UNINDEXED, "
+                "content, "
+                "tokenize='unicode61 remove_diacritics 1'"
+                ")"
+            ))
+    except RecallError:
+        raise
+    except Exception as e:
+        raise DatabaseError(detail=str(e)) from e
+
+
+async def populate_fts_from_chunks() -> None:
+    """Fill FTS table from existing chunks rows (idempotent, runs at startup).
+
+    Skips if row counts already match. Re-inserts all rows if out of sync
+    (e.g. after an interrupted migration). Uses INSERT OR IGNORE to avoid
+    duplicates on partial fills.
+    """
+    try:
+        async with get_engine().begin() as conn:
+            fts_result = await conn.execute(text("SELECT COUNT(*) FROM chunks_fts"))
+            fts_count = fts_result.scalar()
+            chunks_result = await conn.execute(text("SELECT COUNT(*) FROM chunks"))
+            chunks_count = chunks_result.scalar()
+            if fts_count == chunks_count:
+                return
+            await conn.execute(text(
+                "INSERT OR IGNORE INTO chunks_fts(chunk_id, document_id, content) "
+                "SELECT CAST(chunk_id AS TEXT), CAST(document_id AS TEXT), content "
+                "FROM chunks"
+            ))
     except RecallError:
         raise
     except Exception as e:

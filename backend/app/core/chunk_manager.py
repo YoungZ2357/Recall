@@ -31,7 +31,7 @@ from app.core.exceptions import (
     SyncError,
 )
 from app.core.models import Document, Chunk, SyncStatus
-from app.core.repository import ChunkRepository, DocumentRepository
+from app.core.repository import ChunkRepository, DocumentRepository, FTSRepository
 from app.core.schemas import ChunkCreate, ChunkIngest
 from app.core.vectordb import QdrantService
 
@@ -213,6 +213,9 @@ class ChunkManager:
         ]
         orm_chunks = await ChunkRepository.bulk_create(session, chunk_creates)
 
+        # Sync to FTS index (SQLite is source of truth; FTS mirrors it)
+        await FTSRepository.bulk_insert(session, orm_chunks)
+
         # Build Qdrant points — use current time for created_at to avoid
         # async lazy-load of server_default attribute after flush
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -280,6 +283,9 @@ class ChunkManager:
         except Exception as e:
             logger.error(f"Qdrant delete failed for document {doc_id}: {e}")
             raise  # SQLite untouched; caller can retry
+
+        # Delete from FTS index before SQLite rows are removed
+        await FTSRepository.delete_by_document(session, UUID(doc_id))
 
         # Delete document from SQLite (cascades to chunks via ORM relationship)
         await DocumentRepository.delete(session, UUID(doc_id))

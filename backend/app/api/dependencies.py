@@ -14,7 +14,7 @@ from app.ingestion.parser import get_parser
 from app.ingestion.pipeline import IngestionPipeline
 from app.retrieval.pipeline import RetrievalPipeline
 from app.retrieval.reranker import Reranker
-from app.retrieval.searcher import VectorSearcher
+from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
 
 # --- Base resources (extracted from app.state) ---
@@ -54,10 +54,12 @@ def get_retrieval_pipeline(
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
     cfg: Annotated[Settings, Depends(get_settings)],
 ) -> RetrievalPipeline:
-    searcher = VectorSearcher(qdrant_service=qdrant, embedder=embedder)
+    vector_searcher = VectorSearcher(qdrant_service=qdrant, embedder=embedder)
+    bm25_searcher = BM25Searcher(session_factory=session_factory)
     reranker = Reranker(embedder=embedder, settings=cfg)
     return RetrievalPipeline(
-        searcher=searcher,
+        vector_searcher=vector_searcher,
+        bm25_searcher=bm25_searcher,
         reranker=reranker,
         embedder=embedder,
         session_factory=session_factory,

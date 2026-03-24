@@ -4,8 +4,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import EmbeddingError, RetrievalError, VectorDBError
+from app.core.repository import FTSRepository
 from app.core.vectordb import QdrantService
 from app.ingestion.embedder import BaseEmbedder
 
@@ -172,10 +174,59 @@ def normalize_scores(hits: list[SearchHit]) -> list[SearchHit]:
 
 
 class BM25Searcher(BaseSearcher):
-    """SQLite FTS5 sparse recall — not yet implemented."""
+    """SQLite FTS5 sparse recall via BM25 ranking."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        recall_multiplier: int = 2,
+    ) -> None:
+        self._session_factory = session_factory
+        self._recall_multiplier = recall_multiplier
 
     async def search(self, query: SearchQuery) -> list[SearchHit]:
-        raise NotImplementedError("BM25Searcher is not implemented yet")
+        """Execute BM25 full-text search against the FTS5 index.
+
+        Args:
+            query: Search parameters. Only `text`, `top_k`, and
+                   `filters["document_id"]` are used; tag filters are ignored
+                   (handled downstream by the reranker).
+
+        Returns:
+            List of SearchHit sorted by descending relevance (score > 0 after
+            negating SQLite's negative bm25() output). Not yet normalized.
+
+        Raises:
+            RetrievalError: Database error during FTS search.
+        """
+        document_id: str | None = None
+        if query.filters:
+            document_id = query.filters.get("document_id")
+
+        try:
+            async with self._session_factory() as session:
+                rows = await FTSRepository.fts_search(
+                    session,
+                    query.text,
+                    query.top_k * self._recall_multiplier,
+                    document_id=document_id,
+                )
+        except Exception as e:
+            raise RetrievalError(
+                message="BM25 search failed",
+                detail=str(e),
+            ) from e
+
+        if not rows:
+            return []
+
+        # bm25() returns negative scores; negate for positive relevance ordering
+        hits = [
+            SearchHit(chunk_id=chunk_id, score=-raw_score, source="bm25")
+            for chunk_id, raw_score in rows
+        ]
+        logger.debug("BM25Searcher returned %d hits for query=%r", len(hits), query.text)
+        return hits
 
 
 def reciprocal_rank_fusion(

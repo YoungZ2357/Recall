@@ -39,10 +39,10 @@
 
 | # | 任务 | 类型 | 描述 | 依赖 |
 |---|------|------|------|------|
-| P0-1 | reranker — 加权评分框架 | feature | `final_score = α·vector_sim + β·metadata_score + γ·retention`，α/β/γ 可配置，默认 0.6/0.2/0.2 | — |
-| P0-2 | reranker — metadata_score | feature | tag 语义相似度（chunk tags vs query embedding cosine），文档级权重 | P0-1 |
-| P0-3 | reranker — Ebbinghaus 记忆衰减 | feature | retention 基于最近访问时间和频次的遗忘曲线，支持"优先近期"和"唤醒遗忘"模式 | P0-1 |
-| P0-4 | 访问记录追踪 | feature | SQLite 记录 chunk 被检索/命中的时间戳，供 Ebbinghaus 计算 | P0-3 |
+| ✅ P0-1 | reranker — 加权评分框架 | feature | `final_score = α·vector_sim + β·metadata_score + γ·retention`，α/β/γ 可配置，默认 0.6/0.2/0.2 | — |
+| ✅ P0-2 | reranker — metadata_score | feature | tag 语义相似度（chunk tags vs query embedding cosine），文档级权重 | P0-1 |
+| ✅ P0-3 | reranker — Ebbinghaus 记忆衰减 | feature | retention 基于最近访问时间和频次的遗忘曲线，支持"优先近期"和"唤醒遗忘"模式 | P0-1 |
+| ✅ P0-4 | 访问记录追踪 | feature | SQLite 记录 chunk 被检索/命中的时间戳，供 Ebbinghaus 计算 | P0-3 |
 | ✅ P0-5 | 检索 pipeline 编排 | feature | 串联 query_transform → searcher → reranker，返回排序后的 chunk 列表 | P0-1 |
 | ✅ P0-6 | CLI search 命令 | feature | `python -m app.cli search "query"`，输出 top-k 结果及评分明细 | P0-5 |
 
@@ -61,6 +61,7 @@
 | P1-5 | documents API | feature | POST 上传（触发 ingestion）、GET 列表、GET 详情、DELETE | P1-4 |
 | P1-6 | search API | feature | POST /search（全链路）、POST /search/raw（跳过 refine） | P0-5, P1-4 |
 | P1-7 | generate API（minimal） | feature | POST /generate，接收 context + query → LLM 回答 | P1-4 |
+| P1-8 | QueryDispatcher — 查询调度器 | feature | 位于 query_transform 与 DAG 入口之间，唯一职责是将不同类型的查询变换结果路由到对应的 DAG 通路入口。规则：(1) 原始/改写单查询 → 直接进入主检索通路；(2) RAG-Fusion 变体列表（N 条）→ 展开为 N 条平行 VectorSearcher 通路，汇入 MergeDetector → RRF；(3) HyDE 假设文档嵌入 → 以假设向量替换 query embedding 进入 VectorSearcher 通路。Dispatcher 只做"谁走哪条路"的路由决策，不持有拓扑定义，不执行检索算子 | P1-1, P1-2, P1-3, P0-5 |
 
 ---
 

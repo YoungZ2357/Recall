@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Chunk, ChunkAccess, Document, SyncStatus
@@ -207,6 +207,67 @@ class ChunkRepository:
             .where(Chunk.chunk_id.in_(chunk_ids))
         )
         return {str(row.chunk_id): row.title for row in result.all()}
+
+
+class FTSRepository:
+    """Repository for the FTS5 virtual table (BM25 full-text search)."""
+
+    @staticmethod
+    async def bulk_insert(session: AsyncSession, chunks: list[Chunk]) -> None:
+        """Insert chunks into the FTS index. Uses INSERT OR IGNORE for idempotency."""
+        if not chunks:
+            return
+        await session.execute(
+            text(
+                "INSERT OR IGNORE INTO chunks_fts(chunk_id, document_id, content) "
+                "VALUES (:cid, :did, :content)"
+            ),
+            [
+                {"cid": str(c.chunk_id), "did": str(c.document_id), "content": c.content}
+                for c in chunks
+            ],
+        )
+
+    @staticmethod
+    async def delete_by_document(session: AsyncSession, document_id: UUID) -> None:
+        """Remove all FTS rows for a document."""
+        await session.execute(
+            text("DELETE FROM chunks_fts WHERE document_id = :did"),
+            {"did": str(document_id)},
+        )
+
+    @staticmethod
+    async def fts_search(
+        session: AsyncSession,
+        query_text: str,
+        top_k: int,
+        document_id: str | None = None,
+    ) -> list[tuple[str, float]]:
+        """Full-text BM25 search.
+
+        Returns:
+            List of (chunk_id_str, raw_bm25_score) ordered by relevance ascending
+            (SQLite bm25() returns negative values — lower means more relevant).
+        """
+        safe_query = query_text.replace('"', " ").strip()
+        if not safe_query:
+            return []
+
+        params: dict = {"q": f'"{safe_query}"', "top_k": top_k}
+        filter_clause = ""
+        if document_id:
+            filter_clause = "AND document_id = :doc_id"
+            params["doc_id"] = document_id
+
+        result = await session.execute(
+            text(
+                f"SELECT chunk_id, bm25(chunks_fts) AS score FROM chunks_fts "
+                f"WHERE chunks_fts MATCH :q {filter_clause} "
+                f"ORDER BY score LIMIT :top_k"
+            ),
+            params,
+        )
+        return [(row.chunk_id, row.score) for row in result]
 
 
 class ChunkAccessRepository:

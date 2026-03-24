@@ -47,7 +47,7 @@ async def _run_generate(
 
     from app.retrieval.pipeline import RetrievalPipeline
     from app.retrieval.reranker import Reranker
-    from app.retrieval.searcher import VectorSearcher
+    from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
     session_factory, qdrant, embedder, generator = await init_deps(settings)
     try:
@@ -58,10 +58,12 @@ async def _run_generate(
             )
             raise typer.Exit(code=1)
 
-        searcher = VectorSearcher(qdrant, embedder)
+        vector_searcher = VectorSearcher(qdrant, embedder)
+        bm25_searcher = BM25Searcher(session_factory)
         reranker = Reranker(embedder, settings)
         pipeline = RetrievalPipeline(
-            searcher=searcher,
+            vector_searcher=vector_searcher,
+            bm25_searcher=bm25_searcher,
             reranker=reranker,
             embedder=embedder,
             session_factory=session_factory,
