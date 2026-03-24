@@ -1,0 +1,17 @@
+Table Document {
+  document_id UUID [pk, not null]
+  title varchar(255)
+  source_path varchar(500)
+  file_hash varchar(64)
+  created_at datetime [default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [default: `CURRENT_TIMESTAMP`]
+}
+
+Table Chunk {
+  chunk_id UUID [pk, not null]
+  document_id UUID [ref: > Document.document_id, not null]
+  chunk_index int [not null]
+  content text [not null]
+  created_at datetime [default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [default: `CURRENT_TIMESTAMP`]
+}

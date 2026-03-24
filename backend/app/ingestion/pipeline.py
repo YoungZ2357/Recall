@@ -1,0 +1,203 @@
+"""
+Ingestion pipeline: orchestrates parser → chunker → embedder → chunk_manager
+for a single atomic ingest operation.
+
+Usage:
+    pipeline = IngestionPipeline(
+        parser_factory=get_parser,
+        chunker=RecursiveSplitStrategy(),
+        embedder=APIEmbedder(settings),
+        session_factory=async_session_factory,
+        qdrant_service=qdrant_svc,
+    )
+    doc = await pipeline.ingest(Path("notes.txt"))
+    result = await pipeline.ingest_batch([Path("a.txt"), Path("b.md")])
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.chunk_manager import ChunkManager
+from app.core.exceptions import EmbeddingError, IngestionError, SyncError
+from app.core.models import Document
+from app.core.repository import DocumentRepository
+from app.core.schemas import ChunkIngest, DocumentCreate
+from app.core.vectordb import QdrantService
+from app.ingestion.chunker import BaseChunker
+from app.ingestion.embedder import BaseEmbedder
+from app.ingestion.parser import BaseParser
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Result types
+# ============================================================
+
+@dataclass
+class FailedIngest:
+    file_path: Path
+    error: str
+
+
+@dataclass
+class BatchIngestResult:
+    succeeded: list[Document] = field(default_factory=list)
+    failed: list[FailedIngest] = field(default_factory=list)
+
+
+# ============================================================
+# Pipeline
+# ============================================================
+
+class IngestionPipeline:
+    """Single-document and batch ingestion orchestrator.
+
+    Note: session_factory and qdrant_service are required because ChunkManager
+    uses classmethods that require these dependencies to be passed explicitly.
+    """
+
+    def __init__(
+        self,
+        parser_factory: Callable[[Path], BaseParser],
+        chunker: BaseChunker,
+        embedder: BaseEmbedder,
+        session_factory: async_sessionmaker[AsyncSession],
+        qdrant_service: QdrantService,
+    ) -> None:
+        self._parser_factory = parser_factory
+        self._chunker = chunker
+        self._embedder = embedder
+        self._session_factory = session_factory
+        self._qdrant_service = qdrant_service
+
+    async def ingest(self, file_path: Path) -> Document:
+        """Ingest a single file end-to-end: parse → chunk → embed → dual-write.
+
+        Args:
+            file_path: Absolute or relative path to the file.
+
+        Returns:
+            The created Document ORM object (sync_status=SYNCED on success).
+
+        Raises:
+            FileNotFoundError: File does not exist.
+            IngestionError: No chunks produced after splitting.
+            EmbeddingError: Embedding API failed or vector count mismatch.
+            SyncError: Qdrant upsert failed; document persisted with FAILED status.
+        """
+        file_path = file_path.resolve()  # noqa: ASYNC240
+        if not file_path.is_file():  # noqa: ASYNC240
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # Compute SHA-256 file hash for dedup
+        file_hash = _sha256(file_path)
+
+        # Step 1: Parse (sync method → run in thread)
+        parser = self._parser_factory(file_path)
+        parse_result = await asyncio.to_thread(parser.parse, file_path)
+        logger.debug("Parsed %s (%d chars)", file_path.name, len(parse_result.content))
+
+        # Step 2: Chunk
+        chunks = self._chunker.split(parse_result.content, parse_result.metadata)
+        if not chunks:
+            raise IngestionError(
+                message=f"No chunks produced from file: {file_path.name}",
+                detail="File may be empty or contain only whitespace.",
+            )
+        logger.debug("Split into %d chunks", len(chunks))
+
+        # Step 3: Embed
+        embeddings = await self._embedder.embed_batch([c.content for c in chunks])
+        if len(embeddings) != len(chunks):
+            raise EmbeddingError(
+                message="Embedding count mismatch",
+                detail=f"Expected {len(chunks)} vectors, got {len(embeddings)}",
+            )
+        logger.debug("Embedded %d chunks", len(embeddings))
+
+        # Step 4: Dual-write (SQLite + Qdrant) within a single session
+        async with self._session_factory() as session:
+            title = parse_result.metadata.get("title") or file_path.name
+            doc = await DocumentRepository.create(
+                session,
+                DocumentCreate(
+                    title=title,
+                    source_path=str(file_path),
+                    file_hash=file_hash,
+                ),
+            )
+
+            chunk_ingests = [
+                ChunkIngest(
+                    document_id=doc.document_id,
+                    chunk_index=cd.chunk_index,
+                    content=cd.content,
+                    vector=embeddings[i],
+                )
+                for i, cd in enumerate(chunks)
+            ]
+
+            try:
+                await ChunkManager.write_chunks(
+                    session,
+                    self._qdrant_service,
+                    str(doc.document_id),
+                    chunk_ingests,
+                )
+                await session.commit()
+            except SyncError:
+                # Persist FAILED status set by write_chunks before re-raising
+                await session.commit()
+                raise
+            except Exception:
+                await session.rollback()
+                raise
+
+        logger.info(
+            "Ingested %s → doc_id=%s, chunks=%d",
+            file_path.name,
+            doc.document_id,
+            len(chunks),
+        )
+        return doc
+
+    async def ingest_batch(self, file_paths: list[Path]) -> BatchIngestResult:
+        """Ingest multiple files sequentially. Failures are collected, not raised.
+
+        Args:
+            file_paths: List of file paths to ingest.
+
+        Returns:
+            BatchIngestResult with succeeded Documents and FailedIngest entries.
+        """
+        result = BatchIngestResult()
+        for path in file_paths:
+            try:
+                doc = await self.ingest(path)
+                result.succeeded.append(doc)
+            except Exception as exc:
+                logger.warning("Failed to ingest %s: %s", path, exc)
+                result.failed.append(FailedIngest(file_path=path, error=str(exc)))
+        return result
+
+
+# ============================================================
+# Helper
+# ============================================================
+
+def _sha256(file_path: Path) -> str:
+    """Compute SHA-256 hex digest of a file."""
+    h = hashlib.sha256()
+    with file_path.open("rb") as f:
+        for block in iter(lambda: f.read(65536), b""):
+            h.update(block)
+    return h.hexdigest()

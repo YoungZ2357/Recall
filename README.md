@@ -1,18 +1,26 @@
 # Recall
-Recall is a personal-use local knowledge base retrieval service. It focuses on high-quality document retrieval, 
-multi-dimensional reordering, and post-retrieval contextual refinement, rather than end-to-end generation.
+Recall is a personal-use local knowledge base retrieval service. It emphasizes retrieval quality over generation — combining query transformation (RAG-Fusion, HyDE), multi-signal reranking (tag-semantic scoring, Ebbinghaus memory decay), and post-retrieval refinement (deduplication, context compression, summarization), exposed via REST API and MCP.
 
 
 ## Architecture
-```
-Query → Query Transform → Vector Recall → Reranking → Refinement → Return Context
-             │                 │              │             │
-        query_transform     searcher       reranker      refiner/
-        ├ RAG-Fusion        Qdrant ANN     ├ Cross-Encoder     ├ deduplicator
-        ├ HyDE                             ├ Metadata weights  ├ context_compressor
-        └ Query rewriting                  ├ Graph signals     └ summarizer
-                                           └ Memory decay (Ebbinghaus)
 
+**Implemented**
+```
+Ingestion:  File → Parser → Chunker → Embedder → SQLite + Qdrant
+
+Retrieval:  Query → VectorSearcher → RRF merge → Reranker → Return Context
+                         │                            │
+                     Qdrant ANN                 ├ Weighted scoring (α·retrieval + β·metadata + γ·retention)
+                     score threshold            ├ Tag semantic score (Max-Pooling cosine · doc weight)
+                                                └ Ebbinghaus retention (access frequency + recency)
+```
+
+**Planned**
+```
+Query → Query Transform → Retrieval → Reranking → Refinement → API / MCP
+         ├ RAG-Fusion                               ├ Deduplicator
+         ├ HyDE                                     ├ Context compressor
+         └ Query rewriting                          └ Summarizer
 ```
 
 ## Tech Stack
@@ -22,8 +30,16 @@ Query → Query Transform → Vector Recall → Reranking → Refinement → Ret
 | Backend        | Python 3.11+ · FastAPI · SQLAlchemy 2.0 (async) · aiosqlite |
 | Vector DB      | Qdrant (Docker)                                             |
 | Embedding      | GLM Embedding-3 (online) · BGE + ONNX Runtime (offline)     |
-| Frontend       | React · TypeScript · Vite · Ant Design                      |
-| AI Integration | MCP (stdio / SSE dual-mode)                                 |
+| Frontend       | React · TypeScript · Vite · Ant Design (planned)            |
+| AI Integration | MCP (stdio / SSE dual-mode, planned)                        |
+
+
+## Design Docs
+
+- **Technical decisions**: [`docs/design.md`](docs/design.md)
+- **Retrieval pipeline**: [`docs/instructions/retrieval/`](docs/instructions/retrieval/)
+- **Ingestion pipeline**: [`docs/instructions/injestion/`](docs/instructions/injestion/)
+- **Rejected designs**: [`docs/rejected_designs.md`](docs/rejected_designs.md)
 
 
 ## Project Structure
@@ -34,40 +50,47 @@ Recall/
 │   ├── app/
 │   │   ├── main.py
 │   │   ├── config.py
-│   │   ├── api/                    # HTTP routes
-│   │   │   ├── documents.py        #   Document CRUD
-│   │   │   ├── search.py           #   Search endpoint
-│   │   │   └── generate.py         #   Basic generation (optional)
+│   │   ├── api/                    # HTTP routes (planned)
+│   │   ├── cli/                    # CLI entrypoints
+│   │   │   ├── __main__.py         #   `python -m app.cli`
+│   │   │   ├── ingest.py           #   ingest command
+│   │   │   ├── reindex.py          #   reindex command
+│   │   │   └── _init_deps.py       #   dependency wiring
 │   │   ├── ingestion/              # Document ingestion
-│   │   │   ├── parser.py           #   File parsing
-│   │   │   ├── chunker.py          #   Chunking strategies
-│   │   │   └── embedder.py         #   Dual-mode embedding
+│   │   │   ├── pipeline.py         #   end-to-end ingestion orchestration
+│   │   │   ├── parser.py           #   format dispatcher
+│   │   │   ├── parsers/
+│   │   │   │   ├── text.py         #   plain text
+│   │   │   │   └── pdf.py          #   PDF via Marker CLI
+│   │   │   ├── chunker.py          #   RecursiveSplit / FixedCount strategies
+│   │   │   └── embedder.py         #   BaseEmbedder + APIEmbedder (GLM)
 │   │   ├── retrieval/              # Retrieval core
-│   │   │   ├── query_transform.py  #   Query transformation
-│   │   │   ├── searcher.py         #   Vector recall (ANN)
-│   │   │   └── reranker.py         #   Multi-signal reranking
-│   │   ├── refiner/                # Post-retrieval refinement
-│   │   │   ├── pipeline.py         #   Pipeline orchestration
-│   │   │   ├── context_compressor.py
-│   │   │   ├── summarizer.py
-│   │   │   └── deduplicator.py
-│   │   ├── generation/             # Minimal generation
-│   │   │   └── generator.py
-│   │   ├── mcp/                    # MCP service
-│   │   │   ├── server.py
-│   │   │   └── tools.py
+│   │   │   ├── pipeline.py         #   VectorSearcher → RRF → Reranker orchestration
+│   │   │   ├── searcher.py         #   VectorSearcher (Qdrant ANN) + RRF merge
+│   │   │   ├── reranker.py         #   weighted scoring + Ebbinghaus retention
+│   │   │   └── query_transform.py  #   query rewriting stubs (planned)
+│   │   ├── refiner/                # Post-retrieval refinement (planned)
+│   │   ├── generation/             # Minimal generation (planned)
+│   │   ├── mcp/                    # MCP service (planned)
 │   │   └── core/                   # Shared infrastructure
-│   │       ├── database.py         #   SQLAlchemy async engine
-│   │       ├── models.py           #   ORM models
-│   │       ├── schemas.py          #   Pydantic models
-│   │       ├── vectordb.py         #   Qdrant client
-│   │       ├── chunk_manager.py    #   Lifecycle management
-│   │       ├── dependencies.py     #   FastAPI DI
+│   │       ├── database.py         #   SQLAlchemy async engine + session factory
+│   │       ├── models.py           #   ORM models (Document, Chunk, AccessLog)
+│   │       ├── schemas.py          #   Pydantic request/response models
+│   │       ├── vectordb.py         #   Qdrant async client wrapper
+│   │       ├── chunk_manager.py    #   SQLite ↔ Qdrant dual-write lifecycle
+│   │       ├── repository.py       #   Document / Chunk data access layer
 │   │       └── exceptions.py
 │   ├── tests/
-│   ├── pyproject.toml
-│   └── Dockerfile
-├── frontend/
+│   └── pyproject.toml
+├── docs/
+│   ├── design.md                   # Technical decision records
+│   ├── rejected_designs.md         # Rejected design alternatives
+│   ├── backlog.md                  # Task planning and prioritization
+│   └── instructions/               # Per-module design specifications
+│       ├── core/
+│       ├── retrieval/
+│       └── injestion/
+├── frontend/                       # React + TypeScript (planned)
 ├── docker-compose.yml
 └── CLAUDE.md
 ```

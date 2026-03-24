@@ -6,9 +6,13 @@
 - 仓库结构：见 @README.md
 
 ## Current Stage:
-- Sprint-1
+- P1 — 查询变换 + API 层
 
-完整任务表见 @docs/recall-sprint-plan.md
+完整任务表见 @docs/backlog.md
+
+## 文档职责
+- **@docs/backlog.md**：任务规划、排期、功能提案 → 新增/变更规划内容写入此处
+- **@docs/design.md**：已实现功能的技术决策记录 → 功能落地后将关键设计决策写入此处
 
 ## Common Commands
 ```bash
@@ -22,6 +26,8 @@ uvicorn app.main:app --reload
 cd frontend
 npm install && num run dev
 
+# activate python environment
+conda activate rag_env
 ```
 ## Code Style
 ### Python
@@ -60,3 +66,16 @@ npm install && num run dev
 5. **敏感信息**：API key 等只能通过环境变量获取，禁止硬编码
 6. **数据库访问**：通过 SQLAlchemy ORM，不写裸 SQL
 7. **不修改已有测试**，除非明确要求
+
+## AI Interaction Preferences
+沟通风格
+- 回复语言：中文
+- 代码注释语言：English
+- 解释详细度：简洁，必要时展开
+- 不确定时向我提问，不要猜测
+- 对我提供的代码进行批判性分析，发现错误直接指出
+
+工作流约束
+
+- 先计划后编码，在我明确确认方案之前，不要编码
+- 只编写我明确提及的部分，不主动添加未要求的功能
