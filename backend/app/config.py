@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
+    # MinerU
+    mineru_api_key: str | None = Field(default=None, alias="MINERU_API")
+
     # File upload
     upload_file_dir: str = Field(default="data/files", alias="UPLOAD_FILE_DIR")
 

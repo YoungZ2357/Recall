@@ -27,7 +27,7 @@ def ingest(
     path: Annotated[Path, typer.Argument(help="File or directory to ingest.")],
     pdf_parser: Annotated[
         str,
-        typer.Option("--pdf-parser", help="PDF parser: pymupdf | marker"),
+        typer.Option("--pdf-parser", help="PDF parser: pymupdf | marker | mineru"),
     ] = "pymupdf",
     strategy: Annotated[
         str,
@@ -57,11 +57,15 @@ async def _run_ingest(
 
     session_factory, qdrant, embedder, _ = await init_deps(settings)
     try:
-        # Build parser factory: marker overrides the default pymupdf for .pdf
+        # Build parser factory: marker / mineru override the default pymupdf for .pdf
         if pdf_parser == "marker":
             from app.ingestion.parsers.pdf import MarkerCliParser
             def parser_factory(p: Path) -> BaseParser:
                 return MarkerCliParser() if p.suffix.lower() == ".pdf" else get_parser(p)
+        elif pdf_parser == "mineru":
+            from app.ingestion.parsers.pdf_mineru import MinerUParser
+            def parser_factory(p: Path) -> BaseParser:
+                return MinerUParser(api_key=settings.mineru_api_key) if p.suffix.lower() == ".pdf" else get_parser(p)
         else:
             parser_factory = get_parser
 

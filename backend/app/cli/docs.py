@@ -65,11 +65,12 @@ def delete_docs(
 
 async def _run_list() -> None:
     from app.config import settings
+    from app.core.database import get_async_session
     from app.core.repository import DocumentRepository
 
-    session_factory, qdrant, embedder, _ = await init_deps(settings)
+    _, qdrant, embedder, _ = await init_deps(settings)
     try:
-        async with session_factory() as session:
+        async with get_async_session() as session:
             docs = await DocumentRepository.list_all(session)
 
         if not docs:
@@ -90,7 +91,7 @@ async def _run_list() -> None:
                 str(doc.document_id),
                 doc.title or "—",
                 doc.source_path or "—",
-                doc.sync_status.value,
+                doc.sync_status.value if hasattr(doc.sync_status, "value") else doc.sync_status,
                 doc.created_at.strftime("%Y-%m-%d %H:%M:%S"),
             )
 
@@ -108,12 +109,13 @@ async def _run_delete(
 ) -> None:
     from app.config import settings
     from app.core.chunk_manager import ChunkManager
+    from app.core.database import get_async_session
     from app.core.exceptions import DocumentNotFoundError, VectorDBError
     from app.core.repository import DocumentRepository
 
-    session_factory, qdrant, embedder, _ = await init_deps(settings)
+    _, qdrant, embedder, _ = await init_deps(settings)
     try:
-        async with session_factory() as session:
+        async with get_async_session() as session:
             if doc_id is not None:
                 doc = await DocumentRepository.get_by_id(session, UUID(doc_id))
                 if doc is None:
