@@ -34,6 +34,7 @@ from app.core.vectordb import QdrantService
 from app.ingestion.chunker import BaseChunker
 from app.ingestion.embedder import BaseEmbedder
 from app.ingestion.parser import BaseParser
+from app.ingestion.tagger import AutoTagger
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,14 @@ class IngestionPipeline:
         embedder: BaseEmbedder,
         session_factory: async_sessionmaker[AsyncSession],
         qdrant_service: QdrantService,
+        tagger: AutoTagger | None = None,
     ) -> None:
         self._parser_factory = parser_factory
         self._chunker = chunker
         self._embedder = embedder
         self._session_factory = session_factory
         self._qdrant_service = qdrant_service
+        self._tagger = tagger
 
     async def ingest(self, file_path: Path) -> Document:
         """Ingest a single file end-to-end: parse → chunk → embed → dual-write.
@@ -124,8 +127,15 @@ class IngestionPipeline:
             )
         logger.debug("Embedded %d chunks", len(embeddings))
 
-        # Step 4: Dual-write (SQLite + Qdrant) within a single session
+        # Step 4: Tag + Dual-write (SQLite + Qdrant) within a single session
         async with self._session_factory() as session:
+            # Auto-tag: query existing tags and call LLM before writing
+            tags: list[str] = []
+            if self._tagger is not None:
+                tags = await self._tagger.tag(parse_result.content, session)
+                if tags:
+                    logger.debug("Auto-tagged with %d tags: %s", len(tags), tags)
+
             title = parse_result.metadata.get("title") or file_path.name
             doc = await DocumentRepository.create(
                 session,
@@ -142,6 +152,7 @@ class IngestionPipeline:
                     chunk_index=cd.chunk_index,
                     content=cd.content,
                     vector=embeddings[i],
+                    tags=tags,
                 )
                 for i, cd in enumerate(chunks)
             ]

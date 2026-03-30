@@ -9,6 +9,7 @@ All methods are class methods to facilitate dependency injection.
 The caller must provide database session and Qdrant service instances.
 """
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -213,6 +214,11 @@ class ChunkManager:
         ]
         orm_chunks = await ChunkRepository.bulk_create(session, chunk_creates)
 
+        # Write tags onto each ORM chunk (document-level tags inherited by all chunks)
+        for orm_chunk, chunk in zip(orm_chunks, chunks):
+            if chunk.tags:
+                orm_chunk.tags = json.dumps(chunk.tags, ensure_ascii=False)
+
         # Sync to FTS index (SQLite is source of truth; FTS mirrors it)
         await FTSRepository.bulk_insert(session, orm_chunks)
 
@@ -226,7 +232,7 @@ class ChunkManager:
                 payload={
                     "document_id": str(orm_chunk.document_id),
                     "chunk_index": orm_chunk.chunk_index,
-                    "tags": [],
+                    "tags": chunk.tags,
                     "created_at": now_iso,
                 },
             )

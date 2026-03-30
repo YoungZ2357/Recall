@@ -10,6 +10,7 @@ from app.core.models import Chunk, ChunkAccess, Document, SyncStatus
 from app.core.schemas import ChunkCreate, DocumentCreate
 
 
+
 @dataclass
 class AccessSummary:
     """Aggregated access stats for a single chunk."""
@@ -181,6 +182,24 @@ class ChunkRepository:
         )
         return {str(row.chunk_id): row.weight for row in result.all()}
 
+
+    @classmethod
+    async def get_all_unique_tags(cls, session: AsyncSession) -> list[str]:
+        """Return a sorted list of all unique tag strings across all chunks."""
+        result = await session.execute(
+            select(Chunk.tags).where(Chunk.tags != "[]").distinct()
+        )
+        tag_set: set[str] = set()
+        for (tags_json,) in result.all():
+            if not tags_json:
+                continue
+            try:
+                tags = json.loads(tags_json)
+                if isinstance(tags, list):
+                    tag_set.update(t for t in tags if isinstance(t, str) and t)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return sorted(tag_set)
 
     @classmethod
     async def get_content_by_ids(

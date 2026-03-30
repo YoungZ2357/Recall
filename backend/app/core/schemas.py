@@ -33,6 +33,7 @@ class ChunkIngest(BaseModel):
     chunk_index: int
     content: str
     vector: list[float]
+    tags: list[str] = []
 
 
 class RerankResult(BaseModel):

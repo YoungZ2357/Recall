@@ -55,8 +55,10 @@ async def _run_ingest(
 ) -> None:
     from app.config import settings
 
-    session_factory, qdrant, embedder, _ = await init_deps(settings)
+    session_factory, qdrant, embedder, generator = await init_deps(settings)
     try:
+        from app.ingestion.tagger import AutoTagger
+        tagger = AutoTagger(generator) if generator is not None else None
         # Build parser factory: marker / mineru override the default pymupdf for .pdf
         if pdf_parser == "marker":
             from app.ingestion.parsers.pdf import MarkerCliParser
@@ -81,6 +83,7 @@ async def _run_ingest(
             embedder=embedder,
             session_factory=session_factory,
             qdrant_service=qdrant,
+            tagger=tagger,
         )
 
         if path.is_file():
@@ -140,4 +143,4 @@ async def _run_ingest(
             raise typer.Exit(1)
 
     finally:
-        await teardown_deps(qdrant, embedder)
+        await teardown_deps(qdrant, embedder, generator)

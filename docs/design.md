@@ -4,7 +4,18 @@
 
 ## Ingestion
 
+### Auto-tagger
 
+2026-03-30
+
+- pipeline 位置：`parser → tagger → chunker → embedder → chunk_manager`，在 parse 后、chunk 前执行
+- 输入：parser 产出的全文（超过 8000 字符时截断）；从 SQLite 查询系统已有的全部 unique tags 作为参考
+- LLM 调用：复用 `LLMGenerator.raw_chat()`，system prompt 强制英文，要求仅返回 JSON array
+- 输出：`list[str]` 写入所有 chunks 的 `tags` 字段（document 级别，所有 chunk 继承相同 tags）
+- 失败处理：LLM 调用失败或 JSON 解析失败时 fallback 为 `[]`，记录 warning，不阻断 ingestion
+- 可选启用：`tagger: AutoTagger | None`，`LLM_API_KEY` 未配置时自动跳过，零侵入
+
+> tags 同时写入 SQLite `chunks.tags`（JSON 字符串）和 Qdrant point payload，两者保持一致。已有 tags 列表仅作参考——鼓励复用以保持一致性，允许 LLM 新建 tag。`get_all_unique_tags()` 扫描全表去重，个人知识库规模下无性能问题。
 
 ## Retrieve
 
@@ -27,7 +38,7 @@
 - retention：经典 Ebbinghaus 遗忘曲线，支持 prefer_recent（R）和 awaken_forgotten（1−R）两种模式
 - fallback 策略：无 tags → metadata_score = 0.5，无访问记录 → prefer_recent 给 0 / awaken_forgotten 给 1
 
-> tags 仅存 SQLite，不存 Qdrant payload，避免 payload 膨胀和双写一致性问题。α/β/γ 不做归一化约束，由配置者负责。
+> tags 同时存 SQLite（source of truth）和 Qdrant payload（冗余，方便 payload filter 扩展）。α/β/γ 不做归一化约束，由配置者负责。
 
 Ebbinghaus retention
 $$

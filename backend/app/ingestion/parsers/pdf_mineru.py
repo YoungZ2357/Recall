@@ -7,10 +7,14 @@ Supported extensions: .pdf
 """
 from __future__ import annotations
 
+import json
+import logging
 import sys
 import tempfile
 from pathlib import Path
 from typing import ClassVar
+
+logger = logging.getLogger(__name__)
 
 from app.core.exceptions import ParsingError
 from app.ingestion.parser import BaseParser, ParseResult
@@ -64,7 +68,7 @@ class MinerUParser(BaseParser):
         """
         with tempfile.TemporaryDirectory() as tmp_dir:
             try:
-                md_path, _ = _mineru_parse_pdf(
+                md_path, json_path = _mineru_parse_pdf(
                     file_path=file_path,
                     output_dir=Path(tmp_dir),
                     model_version=self._model_version,
@@ -83,6 +87,7 @@ class MinerUParser(BaseParser):
                 ) from exc
 
             content = md_path.read_text(encoding="utf-8").strip()
+            title = _extract_title_from_json(json_path) or file_path.stem
 
         if not content:
             raise ParsingError(message=f"MinerU 解析结果为空：{file_path}")
@@ -90,9 +95,29 @@ class MinerUParser(BaseParser):
         metadata = {
             "source_path": str(file_path),
             "file_type": file_path.suffix.lower(),
-            "title": file_path.stem,
+            "title": title,
             "file_size": file_path.stat().st_size,
             "parser": "mineru",
         }
 
         return ParseResult(content=content, metadata=metadata)
+
+
+def _extract_title_from_json(json_path: Path | None) -> str | None:
+    """Extract the document title from MinerU JSON output.
+
+    Looks for the first text block with text_level=1 on page 0.
+    Returns None if json_path is absent, unreadable, or contains no H1 on page 0.
+    """
+    if json_path is None or not json_path.exists():
+        return None
+    try:
+        blocks = json.loads(json_path.read_text(encoding="utf-8"))
+        for block in blocks:
+            if block.get("text_level") == 1 and block.get("page_idx") == 0:
+                text = block.get("text", "").strip()
+                if text:
+                    return text
+    except Exception:
+        logger.warning("Failed to extract title from MinerU JSON: %s", json_path)
+    return None
