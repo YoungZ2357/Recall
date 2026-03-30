@@ -2,8 +2,6 @@
 
 初步决策见 @backend/docs/design.md
 
-你需要在满足如下需求的前提下拟定Pipeline的实现计划
-
 ## 基本规则
 
 ### 一、核心元素定义
