@@ -19,6 +19,7 @@ class SampledChunk:
     chunk_id: str
     document_id: str
     content: str
+    document_title: str
 
 
 async def sample_chunks_stratified(
@@ -53,12 +54,19 @@ async def sample_chunks_stratified(
     total_eligible = 0
 
     for doc in documents:
+        if not doc.title:
+            logger.warning(
+                "Document %s has no title, skipping for evaluation sampling",
+                doc.document_id,
+            )
+            continue
         chunks = await ChunkRepository.list_by_document(session, doc.document_id)
         eligible = [
             SampledChunk(
                 chunk_id=str(c.chunk_id),
                 document_id=str(c.document_id),
                 content=c.content,
+                document_title=doc.title,
             )
             for c in chunks
             if len(c.content) >= min_content_length
