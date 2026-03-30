@@ -59,6 +59,7 @@ class RetrievalPipeline:
         top_k: int = 10,
         filters: dict[str, Any] | None = None,
         retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent",
+        record_access: bool = True,
     ) -> list[RetrievalResult]:
         """Run the full retrieval pipeline.
 
@@ -67,6 +68,8 @@ class RetrievalPipeline:
             top_k: Number of results to return.
             filters: Optional metadata filters for vector search.
             retention_mode: Ebbinghaus retention strategy.
+            record_access: Whether to write ChunkAccess logs. Set False for
+                evaluation runs to avoid polluting Ebbinghaus decay data.
 
         Returns:
             Top-k results with scores and content, sorted by final_score desc.
@@ -120,11 +123,12 @@ class RetrievalPipeline:
         rerank_results = rerank_results[:top_k]
         chunk_ids = [UUID(str(r.chunk_id)) for r in rerank_results]
 
-        # 7. Hydrate content + record access (write session)
+        # 7. Hydrate content + optionally record access
         async with self._session_factory() as session:
             content_map = await ChunkRepository.get_content_by_ids(session, chunk_ids)
             title_map = await ChunkRepository.get_document_titles_by_chunk_ids(session, chunk_ids)
-            await ChunkAccessRepository.record_access(session, chunk_ids)
+            if record_access:
+                await ChunkAccessRepository.record_access(session, chunk_ids)
             await session.commit()
 
         # 8. Assemble output

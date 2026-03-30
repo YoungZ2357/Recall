@@ -124,6 +124,27 @@ class LLMGenerator:
 
         yield "data: [DONE]\n\n"
 
+    async def raw_chat(
+        self,
+        messages: list[dict[str, str]],
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        """Send arbitrary chat messages and return the assistant content string.
+
+        Unlike generate(), this accepts raw messages without assuming
+        a retrieval-context format, enabling custom prompts (e.g. query synthesis).
+        """
+        payload = {
+            "model": self._model,
+            "messages": messages,
+            "max_tokens": max_tokens or self._max_tokens,
+            "temperature": temperature if temperature is not None else self._temperature,
+            "stream": False,
+        }
+        data = await self._post_with_retry(payload)
+        return data["choices"][0]["message"]["content"]
+
     async def aclose(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()

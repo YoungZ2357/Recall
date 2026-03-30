@@ -11,6 +11,7 @@ import logging
 
 import typer
 
+from app.cli.eval import eval_app
 from app.cli.generate import generate_app
 from app.cli.ingest import ingest_app
 from app.cli.reindex import reindex_app
@@ -31,6 +32,7 @@ app.add_typer(ingest_app, name="ingest")
 app.add_typer(reindex_app, name="reindex")
 app.add_typer(search_app, name="search")
 app.add_typer(generate_app, name="generate")
+app.add_typer(eval_app, name="eval")
 
 if __name__ == "__main__":
     app()
