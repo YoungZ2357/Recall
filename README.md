@@ -96,8 +96,8 @@ MCP + Frontend (P3):
 - `eval` — Run retrieval quality assessment
 - `docs` — List/delete documents
 - `reindex` — Re-embed entire corpus (model switch)
-- `annotate` — Add relevance annotations for evaluation
-- `contextualize` — Generate context for existing chunks
+- `annotate` — Create questions for all chunks in a document
+- `contextualize` — Generate context for existing chunks, which may help with embedding
 
 
 ## Design Docs
