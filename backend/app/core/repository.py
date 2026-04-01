@@ -118,6 +118,12 @@ class ChunkRepository:
         return result.rowcount
 
     @classmethod
+    async def delete_by_id(cls, session: AsyncSession, chunk_id: UUID) -> None:
+        """Delete a single Chunk by chunk_id. ChunkAccess rows cascade automatically."""
+        await session.execute(delete(Chunk).where(Chunk.chunk_id == chunk_id))
+        await session.flush()
+
+    @classmethod
     async def list_by_document_and_status(
         cls,
         session: AsyncSession,
@@ -295,6 +301,14 @@ class FTSRepository:
         await session.execute(
             text("DELETE FROM chunks_fts WHERE document_id = :did"),
             {"did": str(document_id)},
+        )
+
+    @staticmethod
+    async def delete_by_chunk_id(session: AsyncSession, chunk_id: UUID) -> None:
+        """Remove the FTS row for a single chunk."""
+        await session.execute(
+            text("DELETE FROM chunks_fts WHERE chunk_id = :cid"),
+            {"cid": str(chunk_id)},
         )
 
     @staticmethod

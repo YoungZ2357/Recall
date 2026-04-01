@@ -8,6 +8,7 @@ Usage:
     python -m app.cli generate "<query>" [--top-k N] [--mode prefer_recent|awaken_forgotten] [--stream]
     python -m app.cli docs list
     python -m app.cli docs delete [--doc-id UUID] [--title TEXT] [--all] [--yes]
+    python -m app.cli annotate <doc_id> [--output PATH]
 """
 
 import logging
@@ -16,6 +17,7 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 
+from app.cli.annotate import annotate_app
 from app.cli.contextualize import contextualize_app
 from app.cli.docs import docs_app
 from app.cli.eval import eval_app
@@ -44,6 +46,7 @@ app.add_typer(search_app, name="search")
 app.add_typer(generate_app, name="generate")
 app.add_typer(eval_app, name="eval")
 app.add_typer(docs_app, name="docs")
+app.add_typer(annotate_app, name="annotate")
 
 if __name__ == "__main__":
     app()
