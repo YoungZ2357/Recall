@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     ChunkCountMismatchError,
     ChunkIDMismatchError,
+    ChunkNotFoundError,
     DocumentNotFoundError,
     InvalidSyncStatusTransitionError,
     HealthCheckError,
@@ -313,6 +314,42 @@ class ChunkManager:
         # Delete document from SQLite (cascades to chunks via ORM relationship)
         await DocumentRepository.delete(session, UUID(doc_id))
         logger.info(f"Deleted document {doc_id} and {len(point_ids)} chunks from both stores")
+
+    @classmethod
+    async def delete_chunk(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        chunk_id: str,
+    ) -> None:
+        """Delete a single chunk from Qdrant, FTS, and SQLite.
+
+        Deletion order: Qdrant → FTS → SQLite.
+        Unlike delete_document, Qdrant failure is non-blocking: a warning is logged
+        and deletion continues so the chunk is always removed from SQLite (source of truth).
+
+        Args:
+            session: Database session for SQLite operations
+            qdrant_service: Qdrant service instance
+            chunk_id: Chunk UUID as string
+
+        Raises:
+            ChunkNotFoundError: Chunk does not exist in SQLite
+        """
+        chunk = await ChunkRepository.get_by_id(session, UUID(chunk_id))
+        if chunk is None:
+            raise ChunkNotFoundError(chunk_id)
+
+        # Delete from Qdrant first (rebuildable store); failure is non-blocking
+        try:
+            await qdrant_service.delete([chunk_id])
+        except Exception as e:
+            logger.warning(f"Qdrant delete failed for chunk {chunk_id}: {e}")
+
+        await FTSRepository.delete_by_chunk_id(session, UUID(chunk_id))
+        await ChunkRepository.delete_by_id(session, UUID(chunk_id))
+        await session.commit()
+        logger.info(f"Deleted chunk {chunk_id} from all stores")
 
     # ============================================================
     # Health Check (Consistency Verification)

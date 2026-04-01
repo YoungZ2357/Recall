@@ -1,0 +1,259 @@
+"""
+Post-parse content filter: detects and removes reference/appendix sections.
+
+Pipeline position: parser → content_filter (optional) → chunker → ...
+
+Usage:
+    result = content_filter(text)
+    if result.cut_point is not None:
+        print(f"Removed {result.removed_chars} chars: {result.cut_reason}")
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# Pattern constants
+# ============================================================
+
+# Reference section heading patterns (case-insensitive).
+# Matched against stripped paragraph text; max length enforced separately.
+_REF_HEADING_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r, re.IGNORECASE)
+    for r in [
+        # Plain English variants
+        r"^references$",
+        r"^bibliography$",
+        r"^works cited$",
+        r"^literature cited$",
+        # Chinese variants
+        r"^参考文献$",
+        r"^参考资料$",
+        r"^引用文献$",
+        # Numbered prefixes: "7. References", "7 References", "VII. References"
+        r"^(?:\d+\.?\s+|[IVXLCDM]+\.?\s+)references$",
+        r"^(?:\d+\.?\s+|[IVXLCDM]+\.?\s+)bibliography$",
+        r"^(?:\d+\.?\s+|[IVXLCDM]+\.?\s+)works cited$",
+        r"^(?:\d+\.?\s+|[IVXLCDM]+\.?\s+)literature cited$",
+        r"^(?:\d+\.?\s+|[IVXLCDM]+\.?\s+)参考文献$",
+        r"^(?:\d+\.?\s+|[IVXLCDM]+\.?\s+)参考资料$",
+    ]
+]
+_REF_HEADING_MAX_LEN = 30
+
+# Appendix section heading patterns.
+_APPENDIX_HEADING_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r, re.IGNORECASE)
+    for r in [
+        r"^appendix$",
+        r"^appendices$",
+        r"^附录$",
+        # Numbered: "Appendix A", "Appendix 1"
+        r"^appendix\s+[A-Z0-9]",
+        # Single letter + title: "A. Mathematical Derivations"
+        r"^[A-Z]\.\s+\w+",
+        r"^supplementary\s+material",
+        r"^supplemental\s+information",
+    ]
+]
+_APPENDIX_HEADING_MAX_LEN = 50
+
+# Citation density features (6 categories).
+# Each entry is a compiled pattern; a paragraph scores 1 point per category matched.
+_CITATION_FEATURES: list[re.Pattern[str]] = [
+    re.compile(r"\[\d+(?:[,\s]+\d+)*\]"),                                # [1], [1, 2]
+    re.compile(r"\(\s*\d{4}[a-z]?\s*\)|,\s*\d{4}[a-z]?\b"),            # (2023), (2019a), , 2024
+    re.compile(r"doi[:.]", re.IGNORECASE),                               # doi: / doi.
+    re.compile(r"https?://"),                                            # URLs
+    re.compile(r"arXiv:", re.IGNORECASE),                                # arXiv:
+    re.compile(                                                          # academic keywords
+        r"\b(?:Proceedings|Conference|Journal|Trans\.|Vol\.|pp\.|et al\.)\b",
+        re.IGNORECASE,
+    ),
+]
+_TOTAL_FEATURES = len(_CITATION_FEATURES)  # 6
+
+# Tuning constants
+_POSITION_PRIOR_THRESHOLD = 0.40   # ignore anchors in the first 40% of the document
+_DENSITY_MIN = 0.3                  # minimum density to count a paragraph as "dense"
+_DENSITY_CONFIRM_WINDOW = 3         # look at this many paragraphs after the anchor
+_DENSITY_CONFIRM_MIN = 2            # at least this many must be dense to confirm
+_FALLBACK_WINDOW_MIN = 5            # fallback: min consecutive dense paragraphs required
+
+
+# ============================================================
+# Result type
+# ============================================================
+
+@dataclass
+class ContentFilterResult:
+    filtered_text: str
+    removed_chars: int
+    cut_point: int | None          # character offset into original text; None = no cut
+    cut_reason: str | None         # human-readable description of why the cut was made
+
+
+# ============================================================
+# Public API
+# ============================================================
+
+def content_filter(text: str) -> ContentFilterResult:
+    """Detect and remove reference/appendix sections from parsed document text.
+
+    Args:
+        text: Full document text produced by the parser.
+
+    Returns:
+        ContentFilterResult with filtered text and diagnostic fields.
+    """
+    paragraphs, offsets = _split_paragraphs(text)
+
+    if not paragraphs:
+        return ContentFilterResult(
+            filtered_text=text,
+            removed_chars=0,
+            cut_point=None,
+            cut_reason=None,
+        )
+
+    total_chars = len(text)
+    cut_char: int | None = None
+    cut_reason: str | None = None
+
+    # --- Signal 1 + 2 + 3: heading-based detection ---
+    candidates = _find_heading_candidates(paragraphs, offsets, total_chars)
+
+    for idx, anchor_type in candidates:
+        if _confirm_by_density(paragraphs, idx):
+            cut_char = offsets[idx]
+            cut_reason = (
+                f"{anchor_type.capitalize()} heading at paragraph {idx}, "
+                f"confirmed by citation density"
+            )
+            break
+
+    # --- Fallback: pure density scan from rear 40% ---
+    if cut_char is None:
+        cut_char, cut_reason = _fallback_density_scan(paragraphs, offsets, total_chars)
+
+    if cut_char is None:
+        logger.info("content_filter: no references/appendix region detected in document")
+        return ContentFilterResult(
+            filtered_text=text,
+            removed_chars=0,
+            cut_point=None,
+            cut_reason=None,
+        )
+
+    filtered = text[:cut_char].rstrip()
+    removed = total_chars - cut_char
+    logger.debug("content_filter: cut at char %d (%s), removed %d chars", cut_char, cut_reason, removed)
+    return ContentFilterResult(
+        filtered_text=filtered,
+        removed_chars=removed,
+        cut_point=cut_char,
+        cut_reason=cut_reason,
+    )
+
+
+# ============================================================
+# Internal helpers
+# ============================================================
+
+def _split_paragraphs(text: str) -> tuple[list[str], list[int]]:
+    """Split text by double newlines; return paragraphs and their start offsets."""
+    paragraphs: list[str] = []
+    offsets: list[int] = []
+    pos = 0
+    for part in text.split("\n\n"):
+        paragraphs.append(part)
+        offsets.append(pos)
+        pos += len(part) + 2  # +2 for the "\n\n" separator
+    return paragraphs, offsets
+
+
+def _paragraph_density(para: str) -> float:
+    """Return fraction of citation feature categories matched in a paragraph."""
+    hits = sum(1 for pat in _CITATION_FEATURES if pat.search(para))
+    return hits / _TOTAL_FEATURES
+
+
+def _is_ref_heading(stripped: str) -> bool:
+    if len(stripped) > _REF_HEADING_MAX_LEN:
+        return False
+    return any(pat.match(stripped) for pat in _REF_HEADING_PATTERNS)
+
+
+def _is_appendix_heading(stripped: str) -> bool:
+    if len(stripped) > _APPENDIX_HEADING_MAX_LEN:
+        return False
+    return any(pat.match(stripped) for pat in _APPENDIX_HEADING_PATTERNS)
+
+
+def _find_heading_candidates(
+    paragraphs: list[str],
+    offsets: list[int],
+    total_chars: int,
+) -> list[tuple[int, str]]:
+    """Return (paragraph_index, type) pairs that pass the position prior filter."""
+    candidates: list[tuple[int, str]] = []
+    for i, para in enumerate(paragraphs):
+        stripped = para.strip()
+        if not stripped:
+            continue
+        relative_pos = offsets[i] / total_chars if total_chars > 0 else 0
+        if relative_pos < _POSITION_PRIOR_THRESHOLD:
+            continue  # too early in the document — skip
+        if _is_ref_heading(stripped):
+            candidates.append((i, "references"))
+        elif _is_appendix_heading(stripped):
+            candidates.append((i, "appendix"))
+    return candidates
+
+
+def _confirm_by_density(paragraphs: list[str], anchor_idx: int) -> bool:
+    """Check whether the paragraphs after anchor_idx confirm a citation-dense region."""
+    window = paragraphs[anchor_idx + 1: anchor_idx + 1 + _DENSITY_CONFIRM_WINDOW]
+    if not window:
+        # No subsequent paragraphs — accept heading alone as confirmation
+        return True
+    dense_count = sum(1 for p in window if _paragraph_density(p) >= _DENSITY_MIN)
+    return dense_count >= _DENSITY_CONFIRM_MIN
+
+
+def _fallback_density_scan(
+    paragraphs: list[str],
+    offsets: list[int],
+    total_chars: int,
+) -> tuple[int | None, str | None]:
+    """Scan rear 40% for a run of >= _FALLBACK_WINDOW_MIN consecutive dense paragraphs."""
+    start_search = next(
+        (i for i, off in enumerate(offsets) if off / total_chars >= _POSITION_PRIOR_THRESHOLD),
+        len(paragraphs),
+    ) if total_chars > 0 else len(paragraphs)
+
+    run_start: int | None = None
+    run_len = 0
+
+    for i in range(start_search, len(paragraphs)):
+        if _paragraph_density(paragraphs[i]) >= _DENSITY_MIN:
+            if run_start is None:
+                run_start = i
+            run_len += 1
+            if run_len >= _FALLBACK_WINDOW_MIN:
+                cut_char = offsets[run_start]
+                reason = (
+                    f"fallback density scan: {run_len} consecutive dense paragraphs "
+                    f"starting at paragraph {run_start}"
+                )
+                return cut_char, reason
+        else:
+            run_start = None
+            run_len = 0
+
+    return None, None
