@@ -217,13 +217,13 @@ cp .env.example .env
 python -m app.cli ingest path/to/documents/
 
 # 2. Search knowledge base
-python -m app.cli search "your query"
+python -m app.cli search "your question"
 
 # 3. Generate answer with retrieved context
 python -m app.cli generate "your question"
 
 # 4. Evaluate retrieval quality
-python -m app.cli eval --queries evaluation_queries.jsonl
+python -m app.cli eval run <path_to_evalset>
 
 # List documents
 python -m app.cli docs list
