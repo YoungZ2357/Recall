@@ -202,6 +202,48 @@ class ChunkRepository:
         return sorted(tag_set)
 
     @classmethod
+    async def list_by_document_without_context(
+        cls, session: AsyncSession, doc_id: UUID
+    ) -> list[Chunk]:
+        """Return chunks for a document where context is NULL, ordered by chunk_index."""
+        result = await session.execute(
+            select(Chunk)
+            .where(Chunk.document_id == doc_id, Chunk.context.is_(None))
+            .order_by(Chunk.chunk_index.asc())
+        )
+        return list(result.scalars().all())
+
+    @classmethod
+    async def bulk_update_context(
+        cls,
+        session: AsyncSession,
+        updates: list[tuple[UUID, str]],
+        sync_status: SyncStatus = SyncStatus.DIRTY,
+    ) -> int:
+        """Bulk update context field and sync_status for given (chunk_id, context) pairs.
+
+        Args:
+            session: Database session.
+            updates: List of (chunk_id, context_text) tuples.
+            sync_status: Status to set after update (default DIRTY).
+
+        Returns:
+            Number of rows updated.
+        """
+        if not updates:
+            return 0
+        count = 0
+        for chunk_id, context_text in updates:
+            result = await session.execute(
+                update(Chunk)
+                .where(Chunk.chunk_id == chunk_id)
+                .values(context=context_text, context_embedded=False, sync_status=sync_status)
+            )
+            count += result.rowcount
+        await session.flush()
+        return count
+
+    @classmethod
     async def get_content_by_ids(
         cls, session: AsyncSession, chunk_ids: list[UUID]
     ) -> dict[str, str]:

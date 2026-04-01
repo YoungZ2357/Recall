@@ -1,7 +1,8 @@
 """CLI entry point: python -m app.cli
 
 Usage:
-    python -m app.cli ingest <path> [--strategy recursive|fixed_count] [--chunk-size N] [--chunk-overlap N]
+    python -m app.cli ingest <path> [--strategy recursive|fixed_count] [--chunk-size N] [--chunk-overlap N] [--contextualize] [--yes]
+    python -m app.cli contextualize [--doc-id UUID] [--all] [--yes]
     python -m app.cli reindex [--doc-id UUID] [--all]
     python -m app.cli search "<query>" [--top-k N] [--mode prefer_recent|awaken_forgotten] [--verbose]
     python -m app.cli generate "<query>" [--top-k N] [--mode prefer_recent|awaken_forgotten] [--stream]
@@ -13,6 +14,7 @@ import logging
 
 import typer
 
+from app.cli.contextualize import contextualize_app
 from app.cli.docs import docs_app
 from app.cli.eval import eval_app
 from app.cli.generate import generate_app
@@ -32,6 +34,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(ingest_app, name="ingest")
+app.add_typer(contextualize_app, name="contextualize")
 app.add_typer(reindex_app, name="reindex")
 app.add_typer(search_app, name="search")
 app.add_typer(generate_app, name="generate")

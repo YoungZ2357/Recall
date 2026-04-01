@@ -41,9 +41,17 @@ def ingest(
         int,
         typer.Option("--chunk-overlap", help="Overlap between consecutive chunks (recursive only)."),
     ] = 64,
+    contextualize: Annotated[
+        bool,
+        typer.Option("--contextualize", help="Generate document-level context per chunk via LLM before embedding."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip confirmation prompts."),
+    ] = False,
 ) -> None:
     """Ingest a single file or all supported files in a directory."""
-    asyncio.run(_run_ingest(path, pdf_parser, strategy, chunk_size, chunk_overlap))
+    asyncio.run(_run_ingest(path, pdf_parser, strategy, chunk_size, chunk_overlap, contextualize, yes))
 
 
 async def _run_ingest(
@@ -52,13 +60,38 @@ async def _run_ingest(
     strategy: str,
     chunk_size: int,
     chunk_overlap: int,
+    contextualize: bool = False,
+    yes: bool = False,
 ) -> None:
     from app.config import settings
 
     session_factory, qdrant, embedder, generator = await init_deps(settings)
     try:
+        from app.ingestion.contextualizer import ContextGenerator
         from app.ingestion.tagger import AutoTagger
+
         tagger = AutoTagger(generator) if generator is not None else None
+
+        # Resolve contextualizer: requires LLM + user confirmation
+        contextualizer: ContextGenerator | None = None
+        if contextualize:
+            if generator is None:
+                console.print(
+                    "[yellow]--contextualize requires LLM_API_KEY to be configured. "
+                    "Skipping context generation.[/yellow]"
+                )
+            else:
+                # Confirmation is deferred until we know chunk count.
+                # For ingest, we pre-confirm here since exact count is unknown
+                # before parsing; pipeline will generate context for all chunks.
+                if yes or typer.confirm(
+                    "Contextualize will call LLM once per chunk. Continue?",
+                    default=False,
+                ):
+                    contextualizer = ContextGenerator(generator)
+                else:
+                    console.print("[dim]Context generation skipped by user.[/dim]")
+
         # Build parser factory: marker / mineru override the default pymupdf for .pdf
         if pdf_parser == "marker":
             from app.ingestion.parsers.pdf import MarkerCliParser
@@ -84,6 +117,7 @@ async def _run_ingest(
             session_factory=session_factory,
             qdrant_service=qdrant,
             tagger=tagger,
+            contextualizer=contextualizer,
         )
 
         if path.is_file():

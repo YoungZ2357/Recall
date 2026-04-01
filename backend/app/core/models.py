@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID as PyUUID
 from enum import Enum
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
@@ -79,6 +79,10 @@ class Chunk(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
+    )
+    context: Mapped[str | None] = mapped_column(Text, default=None, nullable=True)
+    context_embedded: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("0")
     )
     sync_status: Mapped[SyncStatus] = mapped_column(
         String(20), default=SyncStatus.PENDING, index=True

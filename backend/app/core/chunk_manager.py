@@ -203,6 +203,17 @@ class ChunkManager:
                 detail=f"write_chunks requires PENDING or DIRTY status, got {doc.sync_status.value}",
             )
 
+        # Defensive assertion: context_embedded=True requires context to be non-None
+        for chunk in chunks:
+            if chunk.context is None and chunk.context_embedded:
+                raise SyncError(
+                    doc_id=doc_id,
+                    detail=(
+                        f"Illegal state: chunk_index={chunk.chunk_index} has "
+                        f"context_embedded=True but context is None"
+                    ),
+                )
+
         # Insert chunks into SQLite
         chunk_creates = [
             ChunkCreate(
@@ -214,10 +225,11 @@ class ChunkManager:
         ]
         orm_chunks = await ChunkRepository.bulk_create(session, chunk_creates)
 
-        # Write tags onto each ORM chunk (document-level tags inherited by all chunks)
+        # Write tags and context onto each ORM chunk
         for orm_chunk, chunk in zip(orm_chunks, chunks):
             if chunk.tags:
                 orm_chunk.tags = json.dumps(chunk.tags, ensure_ascii=False)
+            orm_chunk.context = chunk.context
 
         # Sync to FTS index (SQLite is source of truth; FTS mirrors it)
         await FTSRepository.bulk_insert(session, orm_chunks)
@@ -249,6 +261,10 @@ class ChunkManager:
                 doc_id=doc_id,
                 detail=f"Qdrant upsert failed: {e}",
             ) from e
+
+        # Set context_embedded based on the explicit signal from pipeline
+        for orm_chunk, chunk in zip(orm_chunks, chunks):
+            orm_chunk.context_embedded = chunk.context_embedded
 
         chunk_ids = [c.chunk_id for c in orm_chunks]
         await ChunkRepository.bulk_update_status(session, chunk_ids, SyncStatus.SYNCED)
@@ -545,6 +561,8 @@ class ChunkManager:
                 "document_id": c.document_id,
                 "chunk_index": c.chunk_index,
                 "content": c.content,
+                "context": c.context,
+                "tags": json.loads(c.tags) if c.tags else [],
             }
             for c in all_chunks
         ]
@@ -565,7 +583,12 @@ class ChunkManager:
             batch_chunk_ids = [d["chunk_id"] for d in batch]
 
             try:
-                vectors = await embedder.embed_batch([d["content"] for d in batch])
+                # Build embed texts: use context + content when context exists
+                embed_texts = [
+                    d["context"] + "\n\n" + d["content"] if d["context"] else d["content"]
+                    for d in batch
+                ]
+                vectors = await embedder.embed_batch(embed_texts)
                 now_iso = datetime.now(timezone.utc).isoformat()
                 points = [
                     PointStruct(
@@ -574,13 +597,20 @@ class ChunkManager:
                         payload={
                             "document_id": str(d["document_id"]),
                             "chunk_index": d["chunk_index"],
-                            "tags": [],
+                            "tags": d["tags"],
                             "created_at": now_iso,
                         },
                     )
                     for d, vector in zip(batch, vectors)
                 ]
                 await qdrant_service.upsert(points)
+
+                # Set context_embedded per chunk based on whether context was used
+                for d in batch:
+                    chunk = await ChunkRepository.get_by_id(session, d["chunk_id"])
+                    if chunk is not None:
+                        chunk.context_embedded = d["context"] is not None
+
                 await ChunkRepository.bulk_update_status(session, batch_chunk_ids, SyncStatus.SYNCED)
                 await session.commit()
                 succeeded += len(batch)

@@ -32,6 +32,7 @@ from app.core.repository import DocumentRepository
 from app.core.schemas import ChunkIngest, DocumentCreate
 from app.core.vectordb import QdrantService
 from app.ingestion.chunker import BaseChunker
+from app.ingestion.contextualizer import ContextGenerator
 from app.ingestion.embedder import BaseEmbedder
 from app.ingestion.parser import BaseParser
 from app.ingestion.tagger import AutoTagger
@@ -74,6 +75,7 @@ class IngestionPipeline:
         session_factory: async_sessionmaker[AsyncSession],
         qdrant_service: QdrantService,
         tagger: AutoTagger | None = None,
+        contextualizer: ContextGenerator | None = None,
     ) -> None:
         self._parser_factory = parser_factory
         self._chunker = chunker
@@ -81,6 +83,7 @@ class IngestionPipeline:
         self._session_factory = session_factory
         self._qdrant_service = qdrant_service
         self._tagger = tagger
+        self._contextualizer = contextualizer
 
     async def ingest(self, file_path: Path) -> Document:
         """Ingest a single file end-to-end: parse → chunk → embed → dual-write.
@@ -118,8 +121,21 @@ class IngestionPipeline:
             )
         logger.debug("Split into %d chunks", len(chunks))
 
-        # Step 3: Embed
-        embeddings = await self._embedder.embed_batch([c.content for c in chunks])
+        # Step 3: Contextualize (optional — generate document-level context per chunk)
+        contexts: list[str | None] = [None] * len(chunks)
+        if self._contextualizer is not None:
+            contexts = await self._contextualizer.generate_batch(
+                parse_result.content, [c.content for c in chunks]
+            )
+            ctx_count = sum(1 for c in contexts if c is not None)
+            logger.debug("Generated context for %d/%d chunks", ctx_count, len(chunks))
+
+        # Step 4: Embed — use context + content when context is available
+        embed_texts = [
+            ctx + "\n\n" + c.content if ctx else c.content
+            for ctx, c in zip(contexts, chunks)
+        ]
+        embeddings = await self._embedder.embed_batch(embed_texts)
         if len(embeddings) != len(chunks):
             raise EmbeddingError(
                 message="Embedding count mismatch",
@@ -127,7 +143,7 @@ class IngestionPipeline:
             )
         logger.debug("Embedded %d chunks", len(embeddings))
 
-        # Step 4: Tag + Dual-write (SQLite + Qdrant) within a single session
+        # Step 5: Tag + Dual-write (SQLite + Qdrant) within a single session
         async with self._session_factory() as session:
             # Auto-tag: query existing tags and call LLM before writing
             tags: list[str] = []
@@ -153,6 +169,8 @@ class IngestionPipeline:
                     content=cd.content,
                     vector=embeddings[i],
                     tags=tags,
+                    context=contexts[i],
+                    context_embedded=contexts[i] is not None,
                 )
                 for i, cd in enumerate(chunks)
             ]
