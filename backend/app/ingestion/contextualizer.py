@@ -9,6 +9,7 @@ Reference: https://www.anthropic.com/news/contextual-retrieval
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ class ContextGenerator:
         self,
         document_text: str,
         chunk_contents: list[str],
+        chunk_callback: Callable[[int, int], None] | None = None,
     ) -> list[str | None]:
         """Generate context for multiple chunks sharing the same document.
 
@@ -77,13 +79,18 @@ class ContextGenerator:
         Args:
             document_text: Full document text (shared across all chunks).
             chunk_contents: List of chunk texts.
+            chunk_callback: Optional callable invoked after each chunk with
+                (completed, total). Useful for driving CLI progress indicators.
 
         Returns:
             List of context strings (or None for failed chunks), same length
             as chunk_contents.
         """
         results: list[str | None] = []
-        for content in chunk_contents:
+        total = len(chunk_contents)
+        for i, content in enumerate(chunk_contents):
             ctx = await self.generate(document_text, content)
             results.append(ctx)
+            if chunk_callback is not None:
+                chunk_callback(i + 1, total)
         return results

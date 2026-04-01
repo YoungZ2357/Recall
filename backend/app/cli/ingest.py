@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.table import Table
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from app.cli._init_deps import init_deps, teardown_deps
 from app.ingestion.chunker import get_chunker
 from app.ingestion.parser import BaseParser, _parser_registry, get_parser
-from app.ingestion.pipeline import IngestionPipeline
+from app.ingestion.pipeline import FailedIngest, IngestionPipeline
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -81,9 +82,6 @@ async def _run_ingest(
                     "Skipping context generation.[/yellow]"
                 )
             else:
-                # Confirmation is deferred until we know chunk count.
-                # For ingest, we pre-confirm here since exact count is unknown
-                # before parsing; pipeline will generate context for all chunks.
                 if yes or typer.confirm(
                     "Contextualize will call LLM once per chunk. Continue?",
                     default=False,
@@ -92,7 +90,7 @@ async def _run_ingest(
                 else:
                     console.print("[dim]Context generation skipped by user.[/dim]")
 
-        # Build parser factory: marker / mineru override the default pymupdf for .pdf
+        # Build parser factory
         if pdf_parser == "marker":
             from app.ingestion.parsers.pdf import MarkerCliParser
             def parser_factory(p: Path) -> BaseParser:
@@ -104,7 +102,6 @@ async def _run_ingest(
         else:
             parser_factory = get_parser
 
-        # Only pass chunk_size / chunk_overlap to strategies that support them
         kwargs = {}
         if strategy == "recursive":
             kwargs = {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
@@ -121,15 +118,7 @@ async def _run_ingest(
         )
 
         if path.is_file():
-            try:
-                doc = await pipeline.ingest(path)
-                console.print(
-                    f"[green]✓[/green] {path.name} → "
-                    f"doc_id={doc.document_id}, status={doc.sync_status.value}"
-                )
-            except Exception as exc:
-                console.print(f"[red]✗[/red] {path.name}: {exc}")
-                raise typer.Exit(1) from exc
+            await _ingest_single(pipeline, path, contextualizer)
 
         elif path.is_dir():
             supported_exts = set(_parser_registry.keys())
@@ -145,32 +134,7 @@ async def _run_ingest(
                 )
                 return
 
-            console.print(f"Found [bold]{len(files)}[/bold] file(s) to ingest...")
-            result = await pipeline.ingest_batch(files)
-
-            table = Table(title="Ingest Results")
-            table.add_column("File", style="cyan")
-            table.add_column("Status", style="bold")
-            table.add_column("Doc ID / Error")
-
-            for doc in result.succeeded:
-                table.add_row(
-                    Path(doc.source_path).name,
-                    "[green]synced[/green]",
-                    str(doc.document_id),
-                )
-            for fail in result.failed:
-                table.add_row(
-                    fail.file_path.name,
-                    "[red]failed[/red]",
-                    fail.error,
-                )
-
-            console.print(table)
-            console.print(
-                f"\nDone: [green]{len(result.succeeded)} succeeded[/green], "
-                f"[red]{len(result.failed)} failed[/red]"
-            )
+            await _ingest_batch(pipeline, files, contextualizer)
 
         else:
             console.print(f"[red]Path not found: {path}[/red]")
@@ -178,3 +142,98 @@ async def _run_ingest(
 
     finally:
         await teardown_deps(qdrant, embedder, generator)
+
+
+async def _ingest_single(
+    pipeline: IngestionPipeline,
+    path: Path,
+    contextualizer: object | None,
+) -> None:
+    """Ingest a single file with per-stage step indicator."""
+    # 5 stages with contextualizer, 4 without
+    total_stages = 5 if contextualizer is not None else 4
+    stage_num = [0]
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task_id = progress.add_task("Starting...", total=None)
+
+        def on_stage(name: str) -> None:
+            stage_num[0] += 1
+            progress.update(
+                task_id,
+                description=f"[bold cyan][{stage_num[0]}/{total_stages}] {name}...[/bold cyan]",
+            )
+
+        try:
+            doc = await pipeline.ingest(path, stage_callback=on_stage)
+        except Exception as exc:
+            console.print(f"[red]✗[/red] {path.name}: {exc}")
+            raise typer.Exit(1) from exc
+
+    console.print(
+        f"[green]✓[/green] {path.name} → "
+        f"doc_id={doc.document_id}, status={doc.sync_status.value}"
+    )
+
+
+async def _ingest_batch(
+    pipeline: IngestionPipeline,
+    files: list[Path],
+    contextualizer: object | None,
+) -> None:
+    """Ingest multiple files with an outer document progress bar."""
+    total_stages = 5 if contextualizer is not None else 4
+    succeeded: list = []
+    failed: list[FailedIngest] = []
+
+    with Progress(
+        SpinnerColumn(),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("{task.description}"),
+        console=console,
+    ) as progress:
+        overall = progress.add_task(f"Ingesting [dim]{files[0].parent}[/dim]", total=len(files))
+
+        for path in files:
+            stage_num = [0]
+
+            def make_on_stage(captured: Path) -> object:
+                def on_stage(name: str) -> None:
+                    stage_num[0] += 1
+                    progress.update(
+                        overall,
+                        description=(
+                            f"[dim]{captured.name}[/dim] "
+                            f"[{stage_num[0]}/{total_stages}] {name}..."
+                        ),
+                    )
+                return on_stage
+
+            t0 = time.monotonic()
+            try:
+                doc = await pipeline.ingest(path, stage_callback=make_on_stage(path))
+                elapsed = time.monotonic() - t0
+                succeeded.append(doc)
+                progress.console.print(f"  [green]✓[/green] {path.name}  ({elapsed:.1f}s)")
+            except Exception as exc:
+                elapsed = time.monotonic() - t0
+                logger.warning("Failed to ingest %s: %s", path, exc)
+                failed.append(FailedIngest(file_path=path, error=str(exc)))
+                progress.console.print(f"  [red]✗[/red] {path.name}: {exc}")
+
+            progress.advance(overall)
+            progress.update(overall, description="Ingesting")
+
+    console.print(
+        f"\nDone: [green]{len(succeeded)} succeeded[/green], "
+        f"[red]{len(failed)} failed[/red]"
+    )
+    if failed:
+        for f in failed:
+            console.print(f"  [red]✗[/red] {f.file_path.name}: {f.error}")

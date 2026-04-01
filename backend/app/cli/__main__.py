@@ -13,6 +13,8 @@ Usage:
 import logging
 
 import typer
+from rich.console import Console
+from rich.logging import RichHandler
 
 from app.cli.contextualize import contextualize_app
 from app.cli.docs import docs_app
@@ -25,7 +27,9 @@ from app.config import settings
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(levelname)s %(name)s: %(message)s",
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler(console=Console(stderr=True), rich_tracebacks=True, markup=True)],
 )
 
 app = typer.Typer(

@@ -11,6 +11,7 @@ The caller must provide database session and Qdrant service instances.
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal, Optional
@@ -520,6 +521,7 @@ class ChunkManager:
         embedder: "BaseEmbedder",
         doc_id: str,
         batch_size: int = 100,
+        chunk_callback: Callable[[int, int], None] | None = None,
     ) -> ReindexResult:
         """Re-embed all chunks for a document, overwriting Qdrant vectors.
 
@@ -577,6 +579,7 @@ class ChunkManager:
         failed_chunk_ids: list[str] = []
         errors: list[str] = []
         succeeded = 0
+        total_chunks = len(chunk_data)
 
         for i in range(0, len(chunk_data), batch_size):
             batch = chunk_data[i : i + batch_size]
@@ -614,6 +617,8 @@ class ChunkManager:
                 await ChunkRepository.bulk_update_status(session, batch_chunk_ids, SyncStatus.SYNCED)
                 await session.commit()
                 succeeded += len(batch)
+                if chunk_callback is not None:
+                    chunk_callback(succeeded, total_chunks)
             except Exception as e:
                 logger.error(
                     f"Batch reindex failed for document {doc_id}, "
@@ -623,6 +628,8 @@ class ChunkManager:
                 await session.commit()
                 failed_chunk_ids.extend(str(cid) for cid in batch_chunk_ids)
                 errors.append(str(e))
+                if chunk_callback is not None:
+                    chunk_callback(succeeded, total_chunks)
 
         # 4. Health check
         health_check_passed = False
