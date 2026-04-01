@@ -10,6 +10,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from app.cli._init_deps import init_deps, teardown_deps
@@ -159,9 +160,25 @@ async def _run_eval(
             settings=settings,
         )
 
-        report = await run_evaluation(
-            pipeline, test_set, top_k=top_k, retention_mode=mode  # type: ignore[arg-type]
-        )
+        with Progress(
+            SpinnerColumn(),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TextColumn("Evaluating"),
+            console=console,
+        ) as progress:
+            eval_task = progress.add_task("Evaluating", total=len(test_set))
+
+            def on_query(current: int, total: int) -> None:
+                progress.update(eval_task, completed=current)
+
+            report = await run_evaluation(
+                pipeline,
+                test_set,
+                top_k=top_k,
+                retention_mode=mode,  # type: ignore[arg-type]
+                query_callback=on_query,
+            )
 
         # Display summary table
         summary = Table(title="Evaluation Summary")

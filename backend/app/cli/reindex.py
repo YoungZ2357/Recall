@@ -9,7 +9,7 @@ from uuid import UUID
 
 import typer
 from rich.console import Console
-from rich.table import Table
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from app.cli._init_deps import init_deps, teardown_deps
 from app.core.chunk_manager import ChunkManager
@@ -66,7 +66,6 @@ async def _run_reindex(doc_id: Optional[str], force_all: bool) -> None:
                 docs = await DocumentRepository.list_all(session)
 
             else:
-                # Default: DIRTY + FAILED
                 all_docs = await DocumentRepository.list_all(session)
                 docs = [
                     d for d in all_docs
@@ -77,52 +76,78 @@ async def _run_reindex(doc_id: Optional[str], force_all: bool) -> None:
                 console.print("[yellow]No documents to reindex.[/yellow]")
                 return
 
-            console.print(f"Reindexing [bold]{len(docs)}[/bold] document(s)...")
+            succeeded_count = 0
+            failed_count = 0
 
-            table = Table(title="Reindex Results")
-            table.add_column("Title", style="cyan", max_width=40)
-            table.add_column("Status", style="dim")
-            table.add_column("Total", justify="right")
-            table.add_column("OK", style="green", justify="right")
-            table.add_column("Fail", style="red", justify="right")
-            table.add_column("Health", justify="center")
+            with Progress(
+                SpinnerColumn(),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TextColumn("{task.description}"),
+                console=console,
+            ) as progress:
+                doc_task = progress.add_task("Reindexing", total=len(docs))
+                chunk_task = progress.add_task("", total=1, visible=False)
 
-            for doc in docs:
-                doc_id_str = str(doc.document_id)
-                prev_status = doc.sync_status.value
-                try:
-                    result = await ChunkManager.reindex_document(
-                        session, qdrant, embedder, doc_id_str
+                for doc in docs:
+                    doc_id_str = str(doc.document_id)
+                    doc_label = doc.title or doc_id_str[:8]
+
+                    progress.update(
+                        doc_task,
+                        description=f"Reindexing  [dim]{doc_label}[/dim]",
                     )
-                    health = "[green]✓[/green]" if result.health_check_passed else "[red]✗[/red]"
-                    table.add_row(
-                        doc.title,
-                        prev_status,
-                        str(result.total),
-                        str(result.succeeded),
-                        str(result.failed),
-                        health,
-                    )
-                    if result.errors:
+
+                    def make_chunk_callback(task_id: int, label: str) -> object:
+                        def on_chunk(current: int, total: int) -> None:
+                            progress.update(
+                                task_id,
+                                completed=current,
+                                total=total,
+                                visible=True,
+                                description=f"  [dim]{label}[/dim]  {current}/{total} chunks",
+                            )
+                        return on_chunk
+
+                    try:
+                        result = await ChunkManager.reindex_document(
+                            session,
+                            qdrant,
+                            embedder,
+                            doc_id_str,
+                            chunk_callback=make_chunk_callback(chunk_task, doc_label),
+                        )
+                        progress.update(chunk_task, visible=False)
+
+                        if result.health_check_passed:
+                            succeeded_count += 1
+                            progress.console.print(
+                                f"  [green]✓[/green] {doc_label}  "
+                                f"{result.succeeded}/{result.total} chunks"
+                            )
+                        else:
+                            failed_count += 1
+                            progress.console.print(
+                                f"  [red]✗[/red] {doc_label}  "
+                                f"{result.succeeded}/{result.total} chunks (health check failed)"
+                            )
+
                         for err in result.errors:
                             logger.warning("Reindex error for %s: %s", doc_id_str, err)
-                        console.print(
-                            f"  [yellow]Warnings for '{doc.title}':[/yellow] "
-                            + "; ".join(result.errors)
-                        )
-                except Exception as exc:
-                    logger.error("Failed to reindex document %s: %s", doc_id_str, exc)
-                    table.add_row(
-                        doc.title,
-                        prev_status,
-                        "-",
-                        "-",
-                        "-",
-                        f"[red]ERR[/red]",
-                    )
-                    console.print(f"  [red]Error reindexing '{doc.title}':[/red] {exc}")
+                            progress.console.print(f"    [yellow]⚠[/yellow] {err}")
 
-            console.print(table)
+                    except Exception as exc:
+                        progress.update(chunk_task, visible=False)
+                        failed_count += 1
+                        logger.error("Failed to reindex document %s: %s", doc_id_str, exc)
+                        progress.console.print(f"  [red]✗[/red] {doc_label}: {exc}")
+
+                    progress.advance(doc_task)
+
+            console.print(
+                f"\nDone: [green]{succeeded_count} succeeded[/green], "
+                f"[red]{failed_count} failed[/red]"
+            )
 
     finally:
         await teardown_deps(qdrant, embedder)

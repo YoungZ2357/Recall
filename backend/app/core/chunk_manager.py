@@ -9,7 +9,9 @@ All methods are class methods to facilitate dependency injection.
 The caller must provide database session and Qdrant service instances.
 """
 
+import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal, Optional
@@ -25,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     ChunkCountMismatchError,
     ChunkIDMismatchError,
+    ChunkNotFoundError,
     DocumentNotFoundError,
     InvalidSyncStatusTransitionError,
     HealthCheckError,
@@ -202,6 +205,17 @@ class ChunkManager:
                 detail=f"write_chunks requires PENDING or DIRTY status, got {doc.sync_status.value}",
             )
 
+        # Defensive assertion: context_embedded=True requires context to be non-None
+        for chunk in chunks:
+            if chunk.context is None and chunk.context_embedded:
+                raise SyncError(
+                    doc_id=doc_id,
+                    detail=(
+                        f"Illegal state: chunk_index={chunk.chunk_index} has "
+                        f"context_embedded=True but context is None"
+                    ),
+                )
+
         # Insert chunks into SQLite
         chunk_creates = [
             ChunkCreate(
@@ -212,6 +226,12 @@ class ChunkManager:
             for chunk in chunks
         ]
         orm_chunks = await ChunkRepository.bulk_create(session, chunk_creates)
+
+        # Write tags and context onto each ORM chunk
+        for orm_chunk, chunk in zip(orm_chunks, chunks):
+            if chunk.tags:
+                orm_chunk.tags = json.dumps(chunk.tags, ensure_ascii=False)
+            orm_chunk.context = chunk.context
 
         # Sync to FTS index (SQLite is source of truth; FTS mirrors it)
         await FTSRepository.bulk_insert(session, orm_chunks)
@@ -226,7 +246,7 @@ class ChunkManager:
                 payload={
                     "document_id": str(orm_chunk.document_id),
                     "chunk_index": orm_chunk.chunk_index,
-                    "tags": [],
+                    "tags": chunk.tags,
                     "created_at": now_iso,
                 },
             )
@@ -243,6 +263,10 @@ class ChunkManager:
                 doc_id=doc_id,
                 detail=f"Qdrant upsert failed: {e}",
             ) from e
+
+        # Set context_embedded based on the explicit signal from pipeline
+        for orm_chunk, chunk in zip(orm_chunks, chunks):
+            orm_chunk.context_embedded = chunk.context_embedded
 
         chunk_ids = [c.chunk_id for c in orm_chunks]
         await ChunkRepository.bulk_update_status(session, chunk_ids, SyncStatus.SYNCED)
@@ -290,6 +314,42 @@ class ChunkManager:
         # Delete document from SQLite (cascades to chunks via ORM relationship)
         await DocumentRepository.delete(session, UUID(doc_id))
         logger.info(f"Deleted document {doc_id} and {len(point_ids)} chunks from both stores")
+
+    @classmethod
+    async def delete_chunk(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        chunk_id: str,
+    ) -> None:
+        """Delete a single chunk from Qdrant, FTS, and SQLite.
+
+        Deletion order: Qdrant → FTS → SQLite.
+        Unlike delete_document, Qdrant failure is non-blocking: a warning is logged
+        and deletion continues so the chunk is always removed from SQLite (source of truth).
+
+        Args:
+            session: Database session for SQLite operations
+            qdrant_service: Qdrant service instance
+            chunk_id: Chunk UUID as string
+
+        Raises:
+            ChunkNotFoundError: Chunk does not exist in SQLite
+        """
+        chunk = await ChunkRepository.get_by_id(session, UUID(chunk_id))
+        if chunk is None:
+            raise ChunkNotFoundError(chunk_id)
+
+        # Delete from Qdrant first (rebuildable store); failure is non-blocking
+        try:
+            await qdrant_service.delete([chunk_id])
+        except Exception as e:
+            logger.warning(f"Qdrant delete failed for chunk {chunk_id}: {e}")
+
+        await FTSRepository.delete_by_chunk_id(session, UUID(chunk_id))
+        await ChunkRepository.delete_by_id(session, UUID(chunk_id))
+        await session.commit()
+        logger.info(f"Deleted chunk {chunk_id} from all stores")
 
     # ============================================================
     # Health Check (Consistency Verification)
@@ -498,6 +558,7 @@ class ChunkManager:
         embedder: "BaseEmbedder",
         doc_id: str,
         batch_size: int = 100,
+        chunk_callback: Callable[[int, int], None] | None = None,
     ) -> ReindexResult:
         """Re-embed all chunks for a document, overwriting Qdrant vectors.
 
@@ -539,6 +600,8 @@ class ChunkManager:
                 "document_id": c.document_id,
                 "chunk_index": c.chunk_index,
                 "content": c.content,
+                "context": c.context,
+                "tags": json.loads(c.tags) if c.tags else [],
             }
             for c in all_chunks
         ]
@@ -553,13 +616,19 @@ class ChunkManager:
         failed_chunk_ids: list[str] = []
         errors: list[str] = []
         succeeded = 0
+        total_chunks = len(chunk_data)
 
         for i in range(0, len(chunk_data), batch_size):
             batch = chunk_data[i : i + batch_size]
             batch_chunk_ids = [d["chunk_id"] for d in batch]
 
             try:
-                vectors = await embedder.embed_batch([d["content"] for d in batch])
+                # Build embed texts: use context + content when context exists
+                embed_texts = [
+                    d["context"] + "\n\n" + d["content"] if d["context"] else d["content"]
+                    for d in batch
+                ]
+                vectors = await embedder.embed_batch(embed_texts)
                 now_iso = datetime.now(timezone.utc).isoformat()
                 points = [
                     PointStruct(
@@ -568,16 +637,25 @@ class ChunkManager:
                         payload={
                             "document_id": str(d["document_id"]),
                             "chunk_index": d["chunk_index"],
-                            "tags": [],
+                            "tags": d["tags"],
                             "created_at": now_iso,
                         },
                     )
                     for d, vector in zip(batch, vectors)
                 ]
                 await qdrant_service.upsert(points)
+
+                # Set context_embedded per chunk based on whether context was used
+                for d in batch:
+                    chunk = await ChunkRepository.get_by_id(session, d["chunk_id"])
+                    if chunk is not None:
+                        chunk.context_embedded = d["context"] is not None
+
                 await ChunkRepository.bulk_update_status(session, batch_chunk_ids, SyncStatus.SYNCED)
                 await session.commit()
                 succeeded += len(batch)
+                if chunk_callback is not None:
+                    chunk_callback(succeeded, total_chunks)
             except Exception as e:
                 logger.error(
                     f"Batch reindex failed for document {doc_id}, "
@@ -587,6 +665,8 @@ class ChunkManager:
                 await session.commit()
                 failed_chunk_ids.extend(str(cid) for cid in batch_chunk_ids)
                 errors.append(str(e))
+                if chunk_callback is not None:
+                    chunk_callback(succeeded, total_chunks)
 
         # 4. Health check
         health_check_passed = False

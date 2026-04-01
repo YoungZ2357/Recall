@@ -8,5 +8,6 @@
 
 - [arXiv:2412.17558](https://arxiv.org/abs/2412.17558) - A Survey of Query Optimization in Large Language Models: 检索重构
 
-
+## Ingestion
+- [Anthropic博客](https://www.anthropic.com/news/contextual-retrieval) - Introducing Contextual Retrieval：嵌入时Chunk前缀生成，用于优化针对名词的查询检索
 

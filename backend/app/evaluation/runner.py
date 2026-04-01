@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Literal
 
 from app.evaluation.metrics import ndcg_at_k, recall_at_k, reciprocal_rank
@@ -17,6 +18,7 @@ async def run_evaluation(
     test_set: list[TestSetEntry],
     top_k: int = 10,
     retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent",
+    query_callback: Callable[[int, int], None] | None = None,
 ) -> EvalReport:
     """Execute evaluation over the full test set.
 
@@ -68,6 +70,8 @@ async def run_evaluation(
             "Query %d/%d: RR=%.3f nDCG=%.3f Recall=%.3f — %r",
             i + 1, len(valid_entries), rr, ndcg, recall, entry.query[:60],
         )
+        if query_callback is not None:
+            query_callback(i + 1, len(valid_entries))
 
     n = len(per_query)
     mrr = sum(r.reciprocal_rank for r in per_query) / n if n else 0.0

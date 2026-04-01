@@ -10,6 +10,7 @@ from app.core.models import Chunk, ChunkAccess, Document, SyncStatus
 from app.core.schemas import ChunkCreate, DocumentCreate
 
 
+
 @dataclass
 class AccessSummary:
     """Aggregated access stats for a single chunk."""
@@ -117,6 +118,12 @@ class ChunkRepository:
         return result.rowcount
 
     @classmethod
+    async def delete_by_id(cls, session: AsyncSession, chunk_id: UUID) -> None:
+        """Delete a single Chunk by chunk_id. ChunkAccess rows cascade automatically."""
+        await session.execute(delete(Chunk).where(Chunk.chunk_id == chunk_id))
+        await session.flush()
+
+    @classmethod
     async def list_by_document_and_status(
         cls,
         session: AsyncSession,
@@ -183,6 +190,66 @@ class ChunkRepository:
 
 
     @classmethod
+    async def get_all_unique_tags(cls, session: AsyncSession) -> list[str]:
+        """Return a sorted list of all unique tag strings across all chunks."""
+        result = await session.execute(
+            select(Chunk.tags).where(Chunk.tags != "[]").distinct()
+        )
+        tag_set: set[str] = set()
+        for (tags_json,) in result.all():
+            if not tags_json:
+                continue
+            try:
+                tags = json.loads(tags_json)
+                if isinstance(tags, list):
+                    tag_set.update(t for t in tags if isinstance(t, str) and t)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return sorted(tag_set)
+
+    @classmethod
+    async def list_by_document_without_context(
+        cls, session: AsyncSession, doc_id: UUID
+    ) -> list[Chunk]:
+        """Return chunks for a document where context is NULL, ordered by chunk_index."""
+        result = await session.execute(
+            select(Chunk)
+            .where(Chunk.document_id == doc_id, Chunk.context.is_(None))
+            .order_by(Chunk.chunk_index.asc())
+        )
+        return list(result.scalars().all())
+
+    @classmethod
+    async def bulk_update_context(
+        cls,
+        session: AsyncSession,
+        updates: list[tuple[UUID, str]],
+        sync_status: SyncStatus = SyncStatus.DIRTY,
+    ) -> int:
+        """Bulk update context field and sync_status for given (chunk_id, context) pairs.
+
+        Args:
+            session: Database session.
+            updates: List of (chunk_id, context_text) tuples.
+            sync_status: Status to set after update (default DIRTY).
+
+        Returns:
+            Number of rows updated.
+        """
+        if not updates:
+            return 0
+        count = 0
+        for chunk_id, context_text in updates:
+            result = await session.execute(
+                update(Chunk)
+                .where(Chunk.chunk_id == chunk_id)
+                .values(context=context_text, context_embedded=False, sync_status=sync_status)
+            )
+            count += result.rowcount
+        await session.flush()
+        return count
+
+    @classmethod
     async def get_content_by_ids(
         cls, session: AsyncSession, chunk_ids: list[UUID]
     ) -> dict[str, str]:
@@ -234,6 +301,14 @@ class FTSRepository:
         await session.execute(
             text("DELETE FROM chunks_fts WHERE document_id = :did"),
             {"did": str(document_id)},
+        )
+
+    @staticmethod
+    async def delete_by_chunk_id(session: AsyncSession, chunk_id: UUID) -> None:
+        """Remove the FTS row for a single chunk."""
+        await session.execute(
+            text("DELETE FROM chunks_fts WHERE chunk_id = :cid"),
+            {"cid": str(chunk_id)},
         )
 
     @staticmethod

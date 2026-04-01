@@ -32,8 +32,11 @@ from app.core.repository import DocumentRepository
 from app.core.schemas import ChunkIngest, DocumentCreate
 from app.core.vectordb import QdrantService
 from app.ingestion.chunker import BaseChunker
+from app.ingestion.content_filter import ContentFilterResult, content_filter
+from app.ingestion.contextualizer import ContextGenerator
 from app.ingestion.embedder import BaseEmbedder
 from app.ingestion.parser import BaseParser
+from app.ingestion.tagger import AutoTagger
 
 logger = logging.getLogger(__name__)
 
@@ -72,18 +75,32 @@ class IngestionPipeline:
         embedder: BaseEmbedder,
         session_factory: async_sessionmaker[AsyncSession],
         qdrant_service: QdrantService,
+        tagger: AutoTagger | None = None,
+        contextualizer: ContextGenerator | None = None,
+        strip_tail: bool = False,
     ) -> None:
         self._parser_factory = parser_factory
         self._chunker = chunker
         self._embedder = embedder
         self._session_factory = session_factory
         self._qdrant_service = qdrant_service
+        self._tagger = tagger
+        self._contextualizer = contextualizer
+        self._strip_tail = strip_tail
+        self.last_filter_result: ContentFilterResult | None = None
 
-    async def ingest(self, file_path: Path) -> Document:
+    async def ingest(
+        self,
+        file_path: Path,
+        stage_callback: Callable[[str], None] | None = None,
+    ) -> Document:
         """Ingest a single file end-to-end: parse → chunk → embed → dual-write.
 
         Args:
             file_path: Absolute or relative path to the file.
+            stage_callback: Optional callable invoked before each pipeline stage
+                with the stage name (e.g. "Parsing", "Chunking"). Useful for
+                driving CLI progress indicators without importing UI libraries here.
 
         Returns:
             The created Document ORM object (sync_status=SYNCED on success).
@@ -102,11 +119,24 @@ class IngestionPipeline:
         file_hash = _sha256(file_path)
 
         # Step 1: Parse (sync method → run in thread)
+        if stage_callback is not None:
+            stage_callback("Parsing")
         parser = self._parser_factory(file_path)
         parse_result = await asyncio.to_thread(parser.parse, file_path)
         logger.debug("Parsed %s (%d chars)", file_path.name, len(parse_result.content))
 
-        # Step 2: Chunk
+        # Step 2 (optional): Strip tail — remove references / appendix sections
+        self.last_filter_result = None
+        if self._strip_tail:
+            if stage_callback is not None:
+                stage_callback("Filtering")
+            self.last_filter_result = content_filter(parse_result.content)
+            if self.last_filter_result.cut_point is not None:
+                parse_result.content = self.last_filter_result.filtered_text
+
+        # Step 3: Chunk
+        if stage_callback is not None:
+            stage_callback("Chunking")
         chunks = self._chunker.split(parse_result.content, parse_result.metadata)
         if not chunks:
             raise IngestionError(
@@ -115,8 +145,25 @@ class IngestionPipeline:
             )
         logger.debug("Split into %d chunks", len(chunks))
 
-        # Step 3: Embed
-        embeddings = await self._embedder.embed_batch([c.content for c in chunks])
+        # Step 4: Contextualize (optional — generate document-level context per chunk)
+        contexts: list[str | None] = [None] * len(chunks)
+        if self._contextualizer is not None:
+            if stage_callback is not None:
+                stage_callback("Contextualizing")
+            contexts = await self._contextualizer.generate_batch(
+                parse_result.content, [c.content for c in chunks]
+            )
+            ctx_count = sum(1 for c in contexts if c is not None)
+            logger.debug("Generated context for %d/%d chunks", ctx_count, len(chunks))
+
+        # Step 5: Embed — use context + content when context is available
+        if stage_callback is not None:
+            stage_callback("Embedding")
+        embed_texts = [
+            ctx + "\n\n" + c.content if ctx else c.content
+            for ctx, c in zip(contexts, chunks)
+        ]
+        embeddings = await self._embedder.embed_batch(embed_texts)
         if len(embeddings) != len(chunks):
             raise EmbeddingError(
                 message="Embedding count mismatch",
@@ -124,8 +171,17 @@ class IngestionPipeline:
             )
         logger.debug("Embedded %d chunks", len(embeddings))
 
-        # Step 4: Dual-write (SQLite + Qdrant) within a single session
+        # Step 6: Tag + Dual-write (SQLite + Qdrant) within a single session
+        if stage_callback is not None:
+            stage_callback("Writing")
         async with self._session_factory() as session:
+            # Auto-tag: query existing tags and call LLM before writing
+            tags: list[str] = []
+            if self._tagger is not None:
+                tags = await self._tagger.tag(parse_result.content, session)
+                if tags:
+                    logger.debug("Auto-tagged with %d tags: %s", len(tags), tags)
+
             title = parse_result.metadata.get("title") or file_path.name
             doc = await DocumentRepository.create(
                 session,
@@ -142,6 +198,9 @@ class IngestionPipeline:
                     chunk_index=cd.chunk_index,
                     content=cd.content,
                     vector=embeddings[i],
+                    tags=tags,
+                    context=contexts[i],
+                    context_embedded=contexts[i] is not None,
                 )
                 for i, cd in enumerate(chunks)
             ]

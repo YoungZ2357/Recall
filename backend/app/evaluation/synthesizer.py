@@ -15,10 +15,11 @@ from app.generation.generator import LLMGenerator
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = (
-    "You are a query generation assistant. Given a text passage, generate natural language "
-    "questions whose answers can be found in the passage.\n\n"
+    "You are a query generation assistant. Given an article title and a text passage from that "
+    "article, generate natural language questions whose answers can be found in the passage.\n\n"
     "Rules:\n"
     "- Generate questions in the SAME LANGUAGE as the passage.\n"
+    "- Questions must be relevant to the article topic indicated by the title.\n"
     "- Questions must be natural language queries (keyword-style, full questions, or colloquial).\n"
     "- Do NOT copy verbatim phrases from the passage.\n"
     "- Vary question types: factual, structural, comparative.\n"
@@ -27,9 +28,10 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _build_user_message(chunk_content: str, num_queries: int) -> str:
+def _build_user_message(chunk_content: str, num_queries: int, document_title: str) -> str:
     return (
-        f"Based on the following passage, generate {num_queries} diverse questions.\n\n"
+        f"Article title: {document_title}\n\n"
+        f"Based on the following passage from this article, generate {num_queries} diverse questions.\n\n"
         f"Passage:\n{chunk_content}"
     )
 
@@ -58,7 +60,7 @@ async def synthesize_queries(
     """
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": _build_user_message(chunk.content, num_queries)},
+        {"role": "user", "content": _build_user_message(chunk.content, num_queries, chunk.document_title)},
     ]
 
     entries: list[TestSetEntry] = []

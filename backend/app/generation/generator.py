@@ -145,6 +145,37 @@ class LLMGenerator:
         data = await self._post_with_retry(payload)
         return data["choices"][0]["message"]["content"]
 
+    async def raw_chat_with_usage(
+        self,
+        messages: list[dict[str, str]],
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> tuple[str, dict]:
+        """Send arbitrary chat messages and return (content, usage_dict).
+
+        Like raw_chat(), but also returns usage information from the API response.
+        For DeepSeek backends, usage_dict includes prompt_cache_hit_tokens and
+        prompt_cache_miss_tokens. For other backends these fields default to 0.
+        """
+        payload = {
+            "model": self._model,
+            "messages": messages,
+            "max_tokens": max_tokens or self._max_tokens,
+            "temperature": temperature if temperature is not None else self._temperature,
+            "stream": False,
+        }
+        data = await self._post_with_retry(payload)
+        content = data["choices"][0]["message"]["content"]
+        raw_usage = data.get("usage") or {}
+        usage = {
+            "prompt_tokens": raw_usage.get("prompt_tokens", 0),
+            "completion_tokens": raw_usage.get("completion_tokens", 0),
+            "total_tokens": raw_usage.get("total_tokens", 0),
+            "prompt_cache_hit_tokens": raw_usage.get("prompt_cache_hit_tokens", 0),
+            "prompt_cache_miss_tokens": raw_usage.get("prompt_cache_miss_tokens", 0),
+        }
+        return content, usage
+
     async def aclose(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.aclose()
