@@ -100,13 +100,6 @@ MCP + Frontend (P3):
 - `contextualize` — Generate context for existing chunks, which may help with embedding
 
 
-## Design Docs
-
-- **Technical decisions**: [`docs/design.md`](docs/design.md)
-- **Backlog & prioritization**: [`docs/backlog.md`](docs/backlog.md)
-- **Rejected designs**: [`docs/rejected_designs.md`](docs/rejected_designs.md)
-- **Retrieval pipeline**: [`docs/instructions/retrieval/`](docs/instructions/retrieval/)
-- **Ingestion pipeline**: [`docs/instructions/injestion/`](docs/instructions/injestion/)
 
 
 ## Project Structure
