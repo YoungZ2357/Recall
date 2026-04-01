@@ -1,45 +1,112 @@
 # Recall
-Recall is a personal-use local knowledge base retrieval service. It emphasizes retrieval quality over generation — combining query transformation (RAG-Fusion, HyDE), multi-signal reranking (tag-semantic scoring, Ebbinghaus memory decay), and post-retrieval refinement (deduplication, context compression, summarization), exposed via REST API and MCP.
 
+Recall is a personal-use local knowledge base retrieval service. It emphasizes **retrieval quality** over generation — combining multi-signal reranking (tag-semantic scoring, Ebbinghaus memory decay), hybrid search (vector + BM25), and sophisticated ingestion (auto-tagging, context-aware chunking), exposed via CLI and REST API.
+
+## Status
+
+- **P0 (Retrieval Core)**: ✅ Complete
+- **P1 (Query Transform + API Layer)**: 🔶 Partial (FastAPI initialized, /generate endpoint, missing documents/search API routes and query transformation)
+- **P2 (Refinement + Testing)**: 🔶 Partial (evaluation framework complete, missing deduplicator/compressor/summarizer)
+- **P3 (MCP + Frontend)**: ❌ Not started
 
 ## Architecture
 
-**Implemented**
+**Fully Implemented**
 ```
-Ingestion:  File → Parser → Chunker → Embedder → SQLite + Qdrant
+Ingestion:
+  File → Parser (Text/PDF) → Auto-Tagger (LLM) → Chunker → Contextualizer 
+  → Content-Filter → Embedder → Dual-write (SQLite + Qdrant)
 
-Retrieval:  Query → VectorSearcher → RRF merge → Reranker → Return Context
-                         │                            │
-                     Qdrant ANN                 ├ Weighted scoring (α·retrieval + β·metadata + γ·retention)
-                     score threshold            ├ Tag semantic score (Max-Pooling cosine · doc weight)
-                                                └ Ebbinghaus retention (access frequency + recency)
+Retrieval Pipeline:
+  Query → Embed → VectorSearcher (Qdrant ANN)  ──┐
+                  BM25Searcher (SQLite FTS5)     ├─→ RRF Merge → Reranker → Return Top-K
+  
+Reranker (Weighted Multi-Signal):
+  final_score = α·retrieval_score + β·metadata_score + γ·retention_score
+  where:
+    - retrieval_score: vector/BM25 search scores, normalized via RRF
+    - metadata_score: max-pooling cosine sim(query_emb, tag_embs) × doc_weight
+    - retention_score: Ebbinghaus forgetting curve (access frequency + recency)
 ```
 
-**Planned**
+**Planned / In Progress**
 ```
-Query → Query Transform → Retrieval → Reranking → Refinement → API / MCP
-         ├ RAG-Fusion                               ├ Deduplicator
-         ├ HyDE                                     ├ Context compressor
-         └ Query rewriting                          └ Summarizer
+Query Transform (P1-1,2,3):
+  ├ RAG-Fusion (generate N query variants → merge results)
+  ├ HyDE (generate hypothesis → embed → search)
+  └ Basic query rewriting
+
+Post-Retrieval Refinement (P2):
+  ├ Deduplicator (content_hash exact, embedding cosine fuzzy)
+  ├ Context Compressor (remove irrelevant sentences)
+  └ Summarizer (LLM-based summarization)
+
+API Exposure (P1-5,6):
+  ├ POST /documents (ingest)
+  ├ GET /documents (list, details)
+  └ POST /search (end-to-end retrieval)
+
+MCP + Frontend (P3):
+  ├ MCP server (stdio/SSE)
+  └ React frontend
 ```
 
 ## Tech Stack
 
-| Layer          | Technology                                                  |
-|----------------|-------------------------------------------------------------|
+| Layer          | Technology                                              |
+|----------------|---------------------------------------------------------|
 | Backend        | Python 3.11+ · FastAPI · SQLAlchemy 2.0 (async) · aiosqlite |
-| Vector DB      | Qdrant (Docker)                                             |
-| Embedding      | GLM Embedding-3 (online) · BGE + ONNX Runtime (offline)     |
-| Frontend       | React · TypeScript · Vite · Ant Design (planned)            |
-| AI Integration | MCP (stdio / SSE dual-mode, planned)                        |
+| Vector DB      | Qdrant (Docker)                                         |
+| Sparse Search  | SQLite FTS5 (BM25 scoring)                              |
+| Embedding      | GLM Embedding-3 (API) · OpenAI-compatible LLM client    |
+| Parsers        | Text · PyMuPDF · Marker(CLI) · MinerU (API call)                  |
+| Evaluation     | MRR · nDCG · Recall@k · Synthetic query synthesis       |
+| Frontend       | React · TypeScript · Vite · Ant Design (planned)        |
+| MCP            | (planned)                                |
+
+
+## Key Features
+
+### ✅ Fully Implemented
+
+**Ingestion**
+- Multi-format parsing (Text, PDF via PyMuPDF/Marker/MinerU)
+- Automatic tag generation (LLM-based document tagging)
+- Context-aware chunking (preserves semantic context across chunk boundaries)
+- Boilerplate filtering (removes noise, references, formatting artifacts)
+- Dual-write consistency (SQLite is source of truth, Qdrant is derived)
+
+**Retrieval**
+- Hybrid search (vector + BM25 with RRF merging)
+- Multi-signal reranking (retrieval score + tag semantics + Ebbinghaus retention)
+- Ebbinghaus forgetting curve (tracks access frequency and recency)
+- Configurable weighted scoring (α/β/γ parameters)
+- Dual-threshold filtering (soft threshold at search, hard threshold at rerank)
+
+**Evaluation**
+- Metrics: MRR, nDCG, Recall@k
+- Query synthesis (generate synthetic query-document pairs from corpus)
+- Configurable samplers (random, diverse, stratified)
+- Batch evaluation runner with progress tracking
+
+**CLI Toolkit**
+- `ingest <path>` — Ingest files/directories with rich progress UI
+- `search <query>` — Search with detailed scoring breakdown
+- `generate <query>` — Generate with retrieved context (retrieval-augmented generation)
+- `eval` — Run retrieval quality assessment
+- `docs` — List/delete documents
+- `reindex` — Re-embed entire corpus (model switch)
+- `annotate` — Add relevance annotations for evaluation
+- `contextualize` — Generate context for existing chunks
 
 
 ## Design Docs
 
 - **Technical decisions**: [`docs/design.md`](docs/design.md)
+- **Backlog & prioritization**: [`docs/backlog.md`](docs/backlog.md)
+- **Rejected designs**: [`docs/rejected_designs.md`](docs/rejected_designs.md)
 - **Retrieval pipeline**: [`docs/instructions/retrieval/`](docs/instructions/retrieval/)
 - **Ingestion pipeline**: [`docs/instructions/injestion/`](docs/instructions/injestion/)
-- **Rejected designs**: [`docs/rejected_designs.md`](docs/rejected_designs.md)
 
 
 ## Project Structure
@@ -48,49 +115,133 @@ Query → Query Transform → Retrieval → Reranking → Refinement → API / M
 Recall/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py
-│   │   ├── config.py
-│   │   ├── api/                    # HTTP routes (planned)
-│   │   ├── cli/                    # CLI entrypoints
-│   │   │   ├── __main__.py         #   `python -m app.cli`
-│   │   │   ├── ingest.py           #   ingest command
-│   │   │   ├── reindex.py          #   reindex command
-│   │   │   └── _init_deps.py       #   dependency wiring
-│   │   ├── ingestion/              # Document ingestion
-│   │   │   ├── pipeline.py         #   end-to-end ingestion orchestration
-│   │   │   ├── parser.py           #   format dispatcher
+│   │   ├── main.py                 # FastAPI app, lifespan, exception handlers
+│   │   ├── config.py               # Pydantic Settings from env
+│   │   │
+│   │   ├── api/                    # ✅ HTTP routes (WIP: only /generate)
+│   │   │   ├── router.py           # Endpoint mounting
+│   │   │   ├── generate.py         # ✅ POST /generate (streaming LLM)
+│   │   │   └── dependencies.py     # ✅ Dependency injection
+│   │   │
+│   │   ├── cli/                    # ✅ CLI interface (Typer)
+│   │   │   ├── __main__.py         # `python -m app.cli` dispatcher
+│   │   │   ├── ingest.py           # ✅ ingest <path> (rich progress UI)
+│   │   │   ├── search.py           # ✅ search <query> (scoring details)
+│   │   │   ├── generate.py         # ✅ generate <query> (with context)
+│   │   │   ├── reindex.py          # ✅ reindex (re-embed on model switch)
+│   │   │   ├── docs.py             # ✅ docs (list/delete documents)
+│   │   │   ├── annotate.py         # ✅ annotate (chunk-level annotations for eval)
+│   │   │   ├── contextualize.py    # ✅ contextualize (context generation)
+│   │   │   ├── eval.py             # ✅ eval (retrieval quality assessment)
+│   │   │   └── _init_deps.py       # Shared dependency wiring
+│   │   │
+│   │   ├── ingestion/              # ✅ Document ingestion pipeline
+│   │   │   ├── pipeline.py         # ✅ Orchestration
+│   │   │   ├── parser.py           # ✅ Format dispatcher
 │   │   │   ├── parsers/
-│   │   │   │   ├── text.py         #   plain text
-│   │   │   │   └── pdf.py          #   PDF via Marker CLI
-│   │   │   ├── chunker.py          #   RecursiveSplit / FixedCount strategies
-│   │   │   └── embedder.py         #   BaseEmbedder + APIEmbedder (GLM)
-│   │   ├── retrieval/              # Retrieval core
-│   │   │   ├── pipeline.py         #   VectorSearcher → RRF → Reranker orchestration
-│   │   │   ├── searcher.py         #   VectorSearcher (Qdrant ANN) + RRF merge
-│   │   │   ├── reranker.py         #   weighted scoring + Ebbinghaus retention
-│   │   │   └── query_transform.py  #   query rewriting stubs (planned)
-│   │   ├── refiner/                # Post-retrieval refinement (planned)
-│   │   ├── generation/             # Minimal generation (planned)
-│   │   ├── mcp/                    # MCP service (planned)
-│   │   └── core/                   # Shared infrastructure
-│   │       ├── database.py         #   SQLAlchemy async engine + session factory
-│   │       ├── models.py           #   ORM models (Document, Chunk, AccessLog)
-│   │       ├── schemas.py          #   Pydantic request/response models
-│   │       ├── vectordb.py         #   Qdrant async client wrapper
-│   │       ├── chunk_manager.py    #   SQLite ↔ Qdrant dual-write lifecycle
-│   │       ├── repository.py       #   Document / Chunk data access layer
-│   │       └── exceptions.py
-│   ├── tests/
+│   │   │   │   ├── text.py         # ✅ Plain text
+│   │   │   │   └── pdf.py          # ✅ PyMuPDF, Marker, MinerU
+│   │   │   ├── chunker.py          # ✅ RecursiveSplit, FixedCount
+│   │   │   ├── embedder.py         # ✅ APIEmbedder (GLM Embedding-3)
+│   │   │   ├── tagger.py           # ✅ Auto-tagger (LLM-based)
+│   │   │   ├── contextualizer.py   # ✅ Contextual retrieval (KV-cache optimized)
+│   │   │   └── content_filter.py   # ✅ Boilerplate removal, noise filtering
+│   │   │
+│   │   ├── retrieval/              # ✅ Retrieval core (complete)
+│   │   │   ├── pipeline.py         # ✅ Full orchestration + hydration
+│   │   │   ├── searcher.py         # ✅ VectorSearcher (Qdrant ANN)
+│   │   │   │                       # ✅ BM25Searcher (SQLite FTS5)
+│   │   │   │                       # ✅ RRF merge algorithm
+│   │   │   ├── reranker.py         # ✅ Weighted multi-signal scoring
+│   │   │   │                       # ✅ Tag-semantic scoring (metadata)
+│   │   │   │                       # ✅ Ebbinghaus retention (forgetting curve)
+│   │   │   ├── operators.py        # Base interfaces (extensible)
+│   │   │   └── query_transform.py  # ❌ Empty (RAG-Fusion, HyDE planned)
+│   │   │
+│   │   ├── evaluation/             # ✅ Evaluation framework
+│   │   │   ├── metrics.py          # ✅ MRR, nDCG, Recall@k
+│   │   │   ├── runner.py           # ✅ Evaluation orchestrator
+│   │   │   ├── sampler.py          # ✅ Query-doc sampling strategies
+│   │   │   └── synthesizer.py      # ✅ Synthetic query generation
+│   │   │
+│   │   ├── generation/             # ✅ LLM generation
+│   │   │   └── generator.py        # ✅ OpenAI-compatible async client
+│   │   │
+│   │   ├── refiner/                # ❌ Empty (dedup/compress/summarize planned)
+│   │   ├── mcp/                    # ❌ Empty (MCP server planned)
+│   │   │
+│   │   └── core/                   # ✅ Shared infrastructure
+│   │       ├── models.py           # ✅ ORM (Document, Chunk, ChunkAccess)
+│   │       ├── schemas.py          # ✅ Pydantic models
+│   │       ├── database.py         # ✅ Async SQLAlchemy + aiosqlite
+│   │       ├── vectordb.py         # ✅ Qdrant wrapper
+│   │       ├── repository.py       # ✅ Data access layer
+│   │       ├── chunk_manager.py    # ✅ SQLite ↔ Qdrant consistency
+│   │       └── exceptions.py       # Custom exception hierarchy
+│   │
+│   ├── tests/                      # Minimal test coverage
 │   └── pyproject.toml
+│
+├── frontend/                       # ❌ Not started (React + TS planned)
+│
 ├── docs/
-│   ├── design.md                   # Technical decision records
-│   ├── rejected_designs.md         # Rejected design alternatives
-│   ├── backlog.md                  # Task planning and prioritization
-│   └── instructions/               # Per-module design specifications
-│       ├── core/
-│       ├── retrieval/
-│       └── injestion/
-├── frontend/                       # React + TypeScript (planned)
+│   ├── design.md                   # Technical decisions
+│   ├── backlog.md                  # Prioritized task list
+│   ├── rejected_designs.md         # Design alternatives considered
+│   └── instructions/               # Per-module specs
+│
 ├── docker-compose.yml
-└── CLAUDE.md
+└── CLAUDE.md                       # Project guidelines
 ```
+
+## Quick Start
+
+### Prerequisites
+- Python 3.11+
+- Qdrant running in Docker
+- Environment variables configured
+
+### Setup
+
+```bash
+# Start Qdrant
+docker compose up -d qdrant
+
+# Create conda environment and install dependencies
+conda create -n recall python=3.11
+conda activate recall
+cd backend && pip install -e .
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys (GLM_API_KEY, etc.)
+```
+
+### Basic Workflow
+
+```bash
+# 1. Ingest documents
+python -m app.cli ingest path/to/documents/
+
+# 2. Search knowledge base
+python -m app.cli search "your query"
+
+# 3. Generate answer with retrieved context
+python -m app.cli generate "your question"
+
+# 4. Evaluate retrieval quality
+python -m app.cli eval --queries evaluation_queries.jsonl
+
+# List documents
+python -m app.cli docs list
+
+# Delete a document
+python -m app.cli docs delete <document_id>
+
+# Re-embed corpus (after model switch)
+python -m app.cli reindex --model new_model_name
+```
+
+
+
+
