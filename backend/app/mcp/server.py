@@ -1,10 +1,8 @@
 """MCP stdio server — exposes Recall retrieval tools to MCP clients.
 
 Run with:
-    python -m app.mcp.server
+    python -m app.mcp
 """
-
-from __future__ import annotations
 
 import json
 import logging
@@ -248,18 +246,3 @@ async def reindex(
         lines.append("Errors:")
         lines.extend(f"  - {e}" for e in errors)
     return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import sys
-    try:
-        print("Starting Recall MCP server...", file=sys.stderr)
-        mcp.run(transport="stdio")
-    except Exception as e:
-        print(f"Fatal: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
