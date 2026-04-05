@@ -210,29 +210,17 @@ cp .env.example .env
 # Edit .env with your API keys (GLM_API_KEY, etc.)
 ```
 
-### Basic Workflow
-
+### Examples
 ```bash
-# 1. Ingest documents
-python -m app.cli ingest path/to/documents/
+python -m app.cli docs list  # show existing document
 
-# 2. Search knowledge base
-python -m app.cli search "your question"
+python -m app.cli ingest --pdf-parser mineru --contextualize --chunk-size 1024 /path/to/file.pdf  # ingest for a single file
 
-# 3. Generate answer with retrieved context
-python -m app.cli generate "your question"
+python -m app.cli ingest --pdf-parser pymupdf --contextualize --chunk-overlap 96 /path/to/folder  # ingest for the whole folder, asnyc document-wise
 
-# 4. Evaluate retrieval quality
-python -m app.cli eval run <path_to_evalset>
+python -m app.cli generate "Tell me about Modular RAG"  # Perform RAG
 
-# List documents
-python -m app.cli docs list
-
-# Delete a document
-python -m app.cli docs delete <document_id>
-
-# Re-embed corpus (after model switch)
-python -m app.cli reindex --model new_model_name
+python -m app.cli delete --all  # delete all doocument in SQLite and Qdrant
 ```
 
 
