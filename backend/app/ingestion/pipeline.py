@@ -32,7 +32,7 @@ from app.core.repository import DocumentRepository
 from app.core.schemas import ChunkIngest, DocumentCreate
 from app.core.vectordb import QdrantService
 from app.ingestion.chunker import BaseChunker
-from app.ingestion.content_filter import ContentFilterResult, content_filter
+from app.ingestion.content_filter import ContentFilterResult, content_filter, strip_markdown_sections
 from app.ingestion.contextualizer import ContextGenerator
 from app.ingestion.embedder import BaseEmbedder
 from app.ingestion.parser import BaseParser
@@ -78,6 +78,7 @@ class IngestionPipeline:
         tagger: AutoTagger | None = None,
         contextualizer: ContextGenerator | None = None,
         strip_tail: bool = False,
+        strip_markdown: bool = False,
     ) -> None:
         self._parser_factory = parser_factory
         self._chunker = chunker
@@ -87,12 +88,14 @@ class IngestionPipeline:
         self._tagger = tagger
         self._contextualizer = contextualizer
         self._strip_tail = strip_tail
+        self._strip_markdown = strip_markdown
         self.last_filter_result: ContentFilterResult | None = None
 
     async def ingest(
         self,
         file_path: Path,
         stage_callback: Callable[[str], None] | None = None,
+        on_chunk_count: Callable[[int], None] | None = None,
     ) -> Document:
         """Ingest a single file end-to-end: parse → chunk → embed → dual-write.
 
@@ -125,9 +128,15 @@ class IngestionPipeline:
         parse_result = await asyncio.to_thread(parser.parse, file_path)
         logger.debug("Parsed %s (%d chars)", file_path.name, len(parse_result.content))
 
-        # Step 2 (optional): Strip tail — remove references / appendix sections
+        # Step 2 (optional): Filter references / appendix sections
         self.last_filter_result = None
-        if self._strip_tail:
+        if self._strip_markdown:
+            if stage_callback is not None:
+                stage_callback("Filtering")
+            self.last_filter_result = strip_markdown_sections(parse_result.content)
+            if self.last_filter_result.cut_point is not None:
+                parse_result.content = self.last_filter_result.filtered_text
+        elif self._strip_tail:
             if stage_callback is not None:
                 stage_callback("Filtering")
             self.last_filter_result = content_filter(parse_result.content)
@@ -144,6 +153,8 @@ class IngestionPipeline:
                 detail="File may be empty or contain only whitespace.",
             )
         logger.debug("Split into %d chunks", len(chunks))
+        if on_chunk_count is not None:
+            on_chunk_count(len(chunks))
 
         # Step 4: Contextualize (optional — generate document-level context per chunk)
         contexts: list[str | None] = [None] * len(chunks)
@@ -229,23 +240,49 @@ class IngestionPipeline:
         )
         return doc
 
-    async def ingest_batch(self, file_paths: list[Path]) -> BatchIngestResult:
-        """Ingest multiple files sequentially. Failures are collected, not raised.
+    async def ingest_batch(
+        self,
+        file_paths: list[Path],
+        concurrency: int = 1,
+    ) -> BatchIngestResult:
+        """Ingest multiple files. Failures are collected, not raised.
 
         Args:
             file_paths: List of file paths to ingest.
+            concurrency: Max number of documents processed simultaneously.
+                1 (default) preserves the original sequential behaviour.
 
         Returns:
             BatchIngestResult with succeeded Documents and FailedIngest entries.
         """
+        if concurrency <= 1:
+            result = BatchIngestResult()
+            for path in file_paths:
+                try:
+                    doc = await self.ingest(path)
+                    result.succeeded.append(doc)
+                except Exception as exc:
+                    logger.warning("Failed to ingest %s: %s", path, exc)
+                    result.failed.append(FailedIngest(file_path=path, error=str(exc)))
+            return result
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def _ingest_one(path: Path) -> Document | FailedIngest:
+            async with semaphore:
+                try:
+                    return await self.ingest(path)
+                except Exception as exc:
+                    logger.warning("Failed to ingest %s: %s", path, exc)
+                    return FailedIngest(file_path=path, error=str(exc))
+
+        outcomes = await asyncio.gather(*[_ingest_one(p) for p in file_paths])
         result = BatchIngestResult()
-        for path in file_paths:
-            try:
-                doc = await self.ingest(path)
-                result.succeeded.append(doc)
-            except Exception as exc:
-                logger.warning("Failed to ingest %s: %s", path, exc)
-                result.failed.append(FailedIngest(file_path=path, error=str(exc)))
+        for outcome in outcomes:
+            if isinstance(outcome, Document):
+                result.succeeded.append(outcome)
+            else:
+                result.failed.append(outcome)  # type: ignore[arg-type]
         return result
 
 

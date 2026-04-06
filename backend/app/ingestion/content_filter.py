@@ -55,8 +55,8 @@ _APPENDIX_HEADING_PATTERNS: list[re.Pattern[str]] = [
         r"^附录$",
         # Numbered: "Appendix A", "Appendix 1"
         r"^appendix\s+[A-Z0-9]",
-        # Single letter + title: "A. Mathematical Derivations"
-        r"^[A-Z]\.\s+\w+",
+        # Single letter + title: "A. Mathematical Derivations" or "A Hyperparameters"
+        r"^[A-Z]\.?\s+\w+",
         r"^supplementary\s+material",
         r"^supplemental\s+information",
     ]
@@ -67,20 +67,24 @@ _APPENDIX_HEADING_MAX_LEN = 50
 # Each entry is a compiled pattern; a paragraph scores 1 point per category matched.
 _CITATION_FEATURES: list[re.Pattern[str]] = [
     re.compile(r"\[\d+(?:[,\s]+\d+)*\]"),                                # [1], [1, 2]
+    re.compile(r"\[[A-Za-z][A-Za-z0-9]*\+?\d{2,4}\]"),                  # [Bel+15], [BVNB13]
     re.compile(r"\(\s*\d{4}[a-z]?\s*\)|,\s*\d{4}[a-z]?\b"),            # (2023), (2019a), , 2024
+    re.compile(r"\b[A-Z][a-z]+,\s+[A-Z]\."),                            # LastName, F. (author-initial)
     re.compile(r"doi[:.]", re.IGNORECASE),                               # doi: / doi.
     re.compile(r"https?://"),                                            # URLs
     re.compile(r"arXiv:", re.IGNORECASE),                                # arXiv:
-    re.compile(                                                          # academic keywords
-        r"\b(?:Proceedings|Conference|Journal|Trans\.|Vol\.|pp\.|et al\.)\b",
+    re.compile(                                                          # academic keywords + journal abbrevs
+        r"\b(?:Proceedings|Conference|Journal|Trans\.|Vol\.|pp\.|et al\.|J\.|Rev\.|Proc\.|Conf\.)\b",
         re.IGNORECASE,
     ),
 ]
-_TOTAL_FEATURES = len(_CITATION_FEATURES)  # 6
+_TOTAL_FEATURES = len(_CITATION_FEATURES)  # 8
 
 # Tuning constants
+_MD_HEADING_RE = re.compile(r"^(#+)\s+(.*)")  # matches "## Section Title"
+
 _POSITION_PRIOR_THRESHOLD = 0.40   # ignore anchors in the first 40% of the document
-_DENSITY_MIN = 0.3                  # minimum density to count a paragraph as "dense"
+_DENSITY_MIN = 0.25                 # minimum density to count a paragraph as "dense"
 _DENSITY_CONFIRM_WINDOW = 3         # look at this many paragraphs after the anchor
 _DENSITY_CONFIRM_MIN = 2            # at least this many must be dense to confirm
 _FALLBACK_WINDOW_MIN = 5            # fallback: min consecutive dense paragraphs required
@@ -102,15 +106,110 @@ class ContentFilterResult:
 # Public API
 # ============================================================
 
-def content_filter(text: str) -> ContentFilterResult:
-    """Detect and remove reference/appendix sections from parsed document text.
+def strip_markdown_sections(text: str) -> ContentFilterResult:
+    """Remove reference and appendix sections identified by Markdown headings.
+
+    Scans for headings (lines starting with #) whose text matches reference or
+    appendix patterns. Each matched section is removed from its heading line up
+    to (but not including) the next heading of equal or higher level, or EOF.
+
+    Unlike content_filter(), this performs surgical multi-range removal rather
+    than a single trailing cut, so content after the removed section is preserved.
 
     Args:
         text: Full document text produced by the parser.
 
     Returns:
         ContentFilterResult with filtered text and diagnostic fields.
+        cut_point is set to the first removed section's start offset, or None if
+        no sections were removed.
     """
+    lines = text.splitlines(keepends=True)
+
+    # Build heading index: list of (line_idx, level, heading_text, char_offset)
+    headings: list[tuple[int, int, str, int]] = []
+    char_offset = 0
+    for idx, line in enumerate(lines):
+        m = _MD_HEADING_RE.match(line)
+        if m:
+            level = len(m.group(1))
+            heading_text = m.group(2).strip()
+            headings.append((idx, level, heading_text, char_offset))
+        char_offset += len(line)
+
+    # Identify removal ranges for each matched heading
+    removal_ranges: list[tuple[int, int]] = []
+    for hi, (_, level, heading_text, start_char) in enumerate(headings):
+        if not (_is_ref_heading(heading_text) or _is_appendix_heading(heading_text)):
+            continue
+        # Section ends at the next heading with level <= current level, or EOF
+        section_end_char = len(text)
+        for hj in range(hi + 1, len(headings)):
+            _, next_level, _, next_start = headings[hj]
+            if next_level <= level:
+                section_end_char = next_start
+                break
+        removal_ranges.append((start_char, section_end_char))
+
+    if not removal_ranges:
+        logger.info("strip_markdown_sections: no reference/appendix headings found")
+        return ContentFilterResult(
+            filtered_text=text,
+            removed_chars=0,
+            cut_point=None,
+            cut_reason=None,
+        )
+
+    # Merge overlapping or adjacent ranges
+    removal_ranges.sort()
+    merged: list[tuple[int, int]] = [removal_ranges[0]]
+    for start, end in removal_ranges[1:]:
+        if start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    # Build filtered text by splicing out each range
+    parts: list[str] = []
+    prev_end = 0
+    total_removed = 0
+    for start, end in merged:
+        parts.append(text[prev_end:start])
+        total_removed += end - start
+        prev_end = end
+    parts.append(text[prev_end:])
+    filtered = "".join(parts).rstrip()
+
+    range_descriptions = "; ".join(f"char {s}–{e}" for s, e in merged)
+    cut_reason = (
+        f"stripped {len(merged)} markdown section(s): {range_descriptions}"
+    )
+    logger.debug("strip_markdown_sections: %s", cut_reason)
+    return ContentFilterResult(
+        filtered_text=filtered,
+        removed_chars=total_removed,
+        cut_point=merged[0][0],
+        cut_reason=cut_reason,
+    )
+
+
+def content_filter(text: str, *, use_markdown_stripper: bool = False) -> ContentFilterResult:
+    """Detect and remove reference/appendix sections from parsed document text.
+
+    Args:
+        text: Full document text produced by the parser.
+        use_markdown_stripper: If True, first attempt section removal via Markdown
+            heading structure. Returns immediately on success; falls back to
+            paragraph-density heuristics only when no Markdown sections are found.
+
+    Returns:
+        ContentFilterResult with filtered text and diagnostic fields.
+    """
+    if use_markdown_stripper:
+        md_result = strip_markdown_sections(text)
+        if md_result.cut_point is not None:
+            return md_result
+
     paragraphs, offsets = _split_paragraphs(text)
 
     if not paragraphs:
@@ -209,9 +308,11 @@ def _find_heading_candidates(
         relative_pos = offsets[i] / total_chars if total_chars > 0 else 0
         if relative_pos < _POSITION_PRIOR_THRESHOLD:
             continue  # too early in the document — skip
-        if _is_ref_heading(stripped):
+        # Strip markdown heading markers (e.g. "# References" → "References")
+        heading_text = re.sub(r"^#+\s*", "", stripped)
+        if _is_ref_heading(heading_text):
             candidates.append((i, "references"))
-        elif _is_appendix_heading(stripped):
+        elif _is_appendix_heading(heading_text):
             candidates.append((i, "appendix"))
     return candidates
 
