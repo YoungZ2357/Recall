@@ -43,8 +43,6 @@ async def _run_search(
 ) -> None:
     from app.core.pipeline_deps import PipelineDeps
     from app.retrieval.pipeline import RetrievalPipeline
-    from app.retrieval.reranker import Reranker
-    from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
     resources = await init_deps()
     try:
@@ -53,12 +51,7 @@ async def _run_search(
             qdrant_client=resources.qdrant_client,
             session_factory=resources.session_factory,
         )
-        pipeline = RetrievalPipeline(
-            retrievers=[VectorSearcher(deps), BM25Searcher(deps)],
-            reranker=Reranker(deps),
-            embedder=resources.embedder,
-            session_factory=resources.session_factory,
-        )
+        pipeline = RetrievalPipeline(deps)
 
         results = await pipeline.search(
             query_text=query,

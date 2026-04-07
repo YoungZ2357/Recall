@@ -139,8 +139,6 @@ async def _run_eval(
     from app.evaluation.runner import run_evaluation
     from app.evaluation.schemas import TestSetEntry
     from app.retrieval.pipeline import RetrievalPipeline
-    from app.retrieval.reranker import Reranker
-    from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
     # Load test set
     path = Path(test_set_path)
@@ -159,12 +157,7 @@ async def _run_eval(
             qdrant_client=resources.qdrant_client,
             session_factory=resources.session_factory,
         )
-        pipeline = RetrievalPipeline(
-            retrievers=[VectorSearcher(deps), BM25Searcher(deps)],
-            reranker=Reranker(deps),
-            embedder=resources.embedder,
-            session_factory=resources.session_factory,
-        )
+        pipeline = RetrievalPipeline(deps)
 
         with Progress(
             SpinnerColumn(),

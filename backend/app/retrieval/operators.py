@@ -65,6 +65,7 @@ class NodeType(Enum):
     SOURCE = "source"
     TRANSFORM = "transform"
     MERGE = "merge"
+    NORMALIZER = "normalizer"  # internal only; injected automatically by DAG engine
 
 
 # ---------------------------------------------------------------------------

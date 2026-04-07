@@ -1,47 +1,77 @@
-"""Retrieval pipeline: query → embed → search → normalize → rerank → output.
+"""Thin orchestration wrapper: embed → DAG execute → hydrate content → record access.
 
-Current hardcoded topology:
-    retriever[0] ─┐
-    retriever[1] ─┼─ normalize → RRF → normalize → Reranker → hydrate → output
-    ...          ─┘
+This module is the stable public interface for callers that want the full
+search experience (embedding + retrieval + content hydration + access recording)
+without wiring up the DAG directly.
 
-Operators implement BaseRetriever / BaseReranker from operators.py.
-The DAG orchestration engine described in docs/instructions/retrieval/topo_abstract.md
-will replace this hardcoded topology; the current wiring becomes the default configuration.
+The heavy lifting is delegated to workflows.hybrid() → engine.RetrievalPipeline.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
+from app.core.pipeline_deps import PipelineDeps
 from app.core.repository import ChunkAccessRepository, ChunkRepository
 from app.core.schemas import RetrievalResult
-from app.ingestion.embedder import BaseEmbedder
-from app.retrieval.operators import BaseReranker, BaseRetriever, PipelineContext, SearchHit
-from app.retrieval.searcher import normalize_scores, reciprocal_rank_fusion
+from app.retrieval.operators import PipelineContext, SearchHit
 
 logger = logging.getLogger(__name__)
 
 
-class RetrievalPipeline:
-    """End-to-end retrieval: embed → search → rerank → hydrate content."""
+async def hydrate_results(
+    hits: list[SearchHit],
+    deps: PipelineDeps,
+    record_access: bool = True,
+) -> list[RetrievalResult]:
+    """Fetch chunk content and document titles for a ranked SearchHit list.
 
-    def __init__(
-        self,
-        retrievers: list[BaseRetriever],
-        reranker: BaseReranker,
-        embedder: BaseEmbedder,
-        session_factory: async_sessionmaker[AsyncSession],
-    ) -> None:
-        self._retrievers = retrievers
-        self._reranker = reranker
-        self._embedder = embedder
-        self._session_factory = session_factory
+    Optionally records chunk access timestamps for Ebbinghaus decay tracking.
+
+    Args:
+        hits: Ranked SearchHit list from the DAG pipeline.
+        deps: Shared dependency container (provides session_factory).
+        record_access: Write ChunkAccess rows. Set False for evaluation runs
+                       to avoid polluting retention data.
+
+    Returns:
+        RetrievalResult list in the same order as hits.
+    """
+    chunk_ids = [UUID(r.chunk_id) for r in hits]
+
+    async with deps.session_factory() as session:
+        content_map = await ChunkRepository.get_content_by_ids(session, chunk_ids)
+        title_map = await ChunkRepository.get_document_titles_by_chunk_ids(session, chunk_ids)
+        if record_access:
+            await ChunkAccessRepository.record_access(session, chunk_ids)
+        await session.commit()
+
+    return [
+        RetrievalResult(
+            chunk_id=UUID(r.chunk_id),
+            final_score=r.score,
+            retrieval_score=r.retrieval_score or 0.0,
+            metadata_score=r.metadata_score or 0.0,
+            retention_score=r.retention_score or 0.0,
+            content=content_map.get(r.chunk_id, ""),
+            document_title=title_map.get(r.chunk_id),
+        )
+        for r in hits
+    ]
+
+
+class RetrievalPipeline:
+    """End-to-end retrieval: embed → hybrid DAG → hydrate content.
+
+    Thin wrapper around workflows.hybrid(). Callers that need custom topologies
+    should use GraphBuilder / workflows directly and call hydrate_results()
+    themselves.
+    """
+
+    def __init__(self, deps: PipelineDeps) -> None:
+        self._deps = deps
 
     async def search(
         self,
@@ -51,92 +81,45 @@ class RetrievalPipeline:
         retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent",
         record_access: bool = True,
     ) -> list[RetrievalResult]:
-        """Run the full retrieval pipeline.
+        """Run the full hybrid retrieval pipeline.
 
         Args:
             query_text: Natural language query.
             top_k: Number of results to return.
-            filters: Optional metadata filters for vector search.
-            retention_mode: Ebbinghaus retention strategy.
-            record_access: Whether to write ChunkAccess logs. Set False for
-                evaluation runs to avoid polluting Ebbinghaus decay data.
+            filters: Optional metadata filters forwarded to VectorSearcher.
+            retention_mode: Ebbinghaus retention strategy for reranking.
+            record_access: Write ChunkAccess rows. Set False for eval runs.
 
         Returns:
-            Top-k results with scores and content, sorted by final_score desc.
+            Top-k RetrievalResult list sorted by final_score descending.
         """
+        from app.retrieval import workflows  # local import avoids circular at module load
+
         # 1. Embed query
-        vectors = await self._embedder.embed_batch([query_text])
+        vectors = await self._deps.embedder.embed_batch([query_text])
         query_embedding = vectors[0]
 
-        # 2. Build shared context for all operators
+        # 2. Build per-query context
         context = PipelineContext(
             query_text=query_text,
             query_embedding=query_embedding,
-            session_factory=self._session_factory,
+            session_factory=self._deps.session_factory,
             retention_mode=retention_mode,
             top_k=top_k,
             filters=filters,
         )
 
-        # 3. Parallel retrieval across all registered retrievers
-        raw_results = await asyncio.gather(
-            *[r.retrieve(context) for r in self._retrievers],
-            return_exceptions=True,
-        )
+        # 3. Execute DAG
+        dag = workflows.hybrid(self._deps)
+        hits = await dag.execute(context)
 
-        hits_per_path: list[list[SearchHit]] = []
-        for i, result in enumerate(raw_results):
-            if isinstance(result, Exception):
-                logger.warning("Retriever[%d] failed, skipping: %s", i, result)
-            else:
-                hits_per_path.append(result)
-
-        if not hits_per_path:
-            logger.info("No hits from any search path for query=%r", query_text)
+        if not hits:
+            logger.info("No hits from DAG pipeline for query=%r", query_text)
             return []
 
-        # 4. Normalize each path independently before fusion
-        normalized_paths = [normalize_scores(hits) for hits in hits_per_path]
+        # 4. Truncate to top_k, then hydrate
+        hits = hits[:top_k]
+        results = await hydrate_results(hits, self._deps, record_access=record_access)
 
-        # 5. RRF fusion (MergeDetector guard is built into reciprocal_rank_fusion)
-        active_paths = [h for h in normalized_paths if h]
-        fused_hits = reciprocal_rank_fusion(active_paths)
-        fused_hits = normalize_scores(fused_hits)
-
-        # 6. Rerank — session lifecycle managed internally by Reranker
-        reranked = await self._reranker.rerank(fused_hits, context)
-        if not reranked:
-            logger.info("All hits filtered by reranker threshold for query=%r", query_text)
-            return []
-
-        # 7. Truncate to top_k
-        reranked = reranked[:top_k]
-        chunk_ids = [UUID(r.chunk_id) for r in reranked]
-
-        # 8. Hydrate content + optionally record access
-        async with self._session_factory() as session:
-            content_map = await ChunkRepository.get_content_by_ids(session, chunk_ids)
-            title_map = await ChunkRepository.get_document_titles_by_chunk_ids(session, chunk_ids)
-            if record_access:
-                await ChunkAccessRepository.record_access(session, chunk_ids)
-            await session.commit()
-
-        # 9. Assemble output — SearchHit.score is final_score after rerank stage
-        results = [
-            RetrievalResult(
-                chunk_id=UUID(r.chunk_id),
-                final_score=r.score,
-                retrieval_score=r.retrieval_score or 0.0,
-                metadata_score=r.metadata_score or 0.0,
-                retention_score=r.retention_score or 0.0,
-                content=content_map.get(r.chunk_id, ""),
-                document_title=title_map.get(r.chunk_id),
-            )
-            for r in reranked
-        ]
-
-        logger.info(
-            "Pipeline returned %d results for query=%r",
-            len(results), query_text,
-        )
+        logger.info("Pipeline returned %d results for query=%r", len(results), query_text)
         return results

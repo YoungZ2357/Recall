@@ -18,8 +18,6 @@ from app.core.models import SyncStatus
 from app.core.pipeline_deps import PipelineDeps
 from app.core.repository import DocumentRepository
 from app.retrieval.pipeline import RetrievalPipeline
-from app.retrieval.reranker import Reranker
-from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +54,7 @@ def _build_pipeline(lc: dict) -> RetrievalPipeline:
         qdrant_client=lc["qdrant"],
         session_factory=lc["session_factory"],
     )
-    return RetrievalPipeline(
-        retrievers=[VectorSearcher(deps), BM25Searcher(deps)],
-        reranker=Reranker(deps),
-        embedder=lc["embedder"],
-        session_factory=lc["session_factory"],
-    )
+    return RetrievalPipeline(deps)
 
 
 # ---------------------------------------------------------------------------

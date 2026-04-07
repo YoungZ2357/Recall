@@ -14,8 +14,6 @@ from app.ingestion.embedder import APIEmbedder
 from app.ingestion.parser import get_parser
 from app.ingestion.pipeline import IngestionPipeline
 from app.retrieval.pipeline import RetrievalPipeline
-from app.retrieval.reranker import Reranker
-from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
 
 # --- Base resources (extracted from app.state) ---
@@ -59,12 +57,7 @@ def get_retrieval_pipeline(
         qdrant_client=qdrant,
         session_factory=session_factory,
     )
-    return RetrievalPipeline(
-        retrievers=[VectorSearcher(deps), BM25Searcher(deps)],
-        reranker=Reranker(deps),
-        embedder=embedder,
-        session_factory=session_factory,
-    )
+    return RetrievalPipeline(deps)
 
 
 def get_ingestion_pipeline(
