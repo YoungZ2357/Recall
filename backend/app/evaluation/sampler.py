@@ -20,6 +20,7 @@ class SampledChunk:
     document_id: str
     content: str
     document_title: str
+    context: str | None = None
 
 
 async def sample_chunks_stratified(
@@ -67,6 +68,7 @@ async def sample_chunks_stratified(
                 document_id=str(c.document_id),
                 content=c.content,
                 document_title=doc.title,
+                context=c.context,
             )
             for c in chunks
             if len(c.content) >= min_content_length

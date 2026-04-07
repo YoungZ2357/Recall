@@ -28,12 +28,20 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _build_user_message(chunk_content: str, num_queries: int, document_title: str) -> str:
-    return (
-        f"Article title: {document_title}\n\n"
+def _build_user_message(
+    chunk_content: str,
+    num_queries: int,
+    document_title: str,
+    context: str | None = None,
+) -> str:
+    parts = [f"Article title: {document_title}\n"]
+    if context:
+        parts.append(f"Passage context (background):\n{context}\n")
+    parts.append(
         f"Based on the following passage from this article, generate {num_queries} diverse questions.\n\n"
         f"Passage:\n{chunk_content}"
     )
+    return "\n".join(parts)
 
 
 def _parse_llm_response(raw: str, model_name: str) -> list[dict[str, str]]:
@@ -52,15 +60,17 @@ async def synthesize_queries(
     chunk: SampledChunk,
     num_queries: int = 2,
     model_name: str = "",
+    with_context: bool = False,
 ) -> list[TestSetEntry]:
     """Generate synthetic queries for a single chunk via LLM.
 
     On JSON parse failure, retries once. If still failing, falls back to
     treating raw text as a single factual query.
     """
+    context = chunk.context if with_context else None
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": _build_user_message(chunk.content, num_queries, chunk.document_title)},
+        {"role": "user", "content": _build_user_message(chunk.content, num_queries, chunk.document_title, context)},
     ]
 
     entries: list[TestSetEntry] = []
@@ -122,6 +132,7 @@ async def generate_test_set(
     num_queries_per_chunk: int = 2,
     concurrency: int = 5,
     model_name: str = "",
+    with_context: bool = False,
 ) -> list[TestSetEntry]:
     """Generate a full test set from sampled chunks with concurrency control.
 
@@ -131,6 +142,7 @@ async def generate_test_set(
         num_queries_per_chunk: Number of queries to generate per chunk.
         concurrency: Max parallel LLM calls.
         model_name: Model identifier recorded in metadata.
+        with_context: If True, prepend each chunk's context field to the synthesis prompt.
 
     Returns:
         List of TestSetEntry ready for JSON serialization.
@@ -150,7 +162,7 @@ async def generate_test_set(
         async def _process(chunk: SampledChunk) -> None:
             async with semaphore:
                 entries = await synthesize_queries(
-                    generator, chunk, num_queries_per_chunk, model_name
+                    generator, chunk, num_queries_per_chunk, model_name, with_context
                 )
             async with lock:
                 all_entries.extend(entries)

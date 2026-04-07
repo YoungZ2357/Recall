@@ -38,9 +38,12 @@ def generate_set(
     concurrency: Annotated[
         int, typer.Option("--concurrency", help="Max parallel LLM calls.")
     ] = 5,
+    with_context: Annotated[
+        bool, typer.Option("--with-context", help="Prepend each chunk's context to the synthesis prompt.")
+    ] = False,
 ) -> None:
     """Sample chunks and generate a synthetic evaluation test set via LLM."""
-    asyncio.run(_run_generate_set(output, num_chunks, queries_per_chunk, min_length, concurrency))
+    asyncio.run(_run_generate_set(output, num_chunks, queries_per_chunk, min_length, concurrency, with_context))
 
 
 @eval_app.command("run")
@@ -71,6 +74,7 @@ async def _run_generate_set(
     queries_per_chunk: int,
     min_length: int,
     concurrency: int,
+    with_context: bool = False,
 ) -> None:
     from app.config import settings
     from app.evaluation.sampler import sample_chunks_stratified
@@ -101,6 +105,7 @@ async def _run_generate_set(
             num_queries_per_chunk=queries_per_chunk,
             concurrency=concurrency,
             model_name=settings.llm_model,
+            with_context=with_context,
         )
 
         # 3. Write JSON

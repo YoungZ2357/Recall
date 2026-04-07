@@ -65,7 +65,7 @@ class MinerUClient:
         self._client = httpx.Client(
             base_url=_BASE_URL,
             headers={"Authorization": f"Bearer {api_key}"},
-            timeout=60.0,
+            timeout=120.0,
         )
 
     def close(self) -> None:

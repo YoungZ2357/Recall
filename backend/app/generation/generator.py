@@ -19,6 +19,7 @@ _RETRY_BASE_DELAY = 1.0
 _SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the user's question based on the provided context. "
     "If the context does not contain enough information, say so honestly."
+    "If no question is provided, summarize the content relating to the query."
 )
 
 
