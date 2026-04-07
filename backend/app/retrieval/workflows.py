@@ -21,6 +21,8 @@ from app.retrieval.reranker import Reranker
 from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
 
+
+
 def linear(
     deps: PipelineDeps,
     retriever_cls: type = VectorSearcher,
@@ -67,3 +69,5 @@ def hybrid(
         ])
         .build(deps)
     )
+
+
