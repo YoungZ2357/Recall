@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import NamedTuple
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -22,9 +23,16 @@ from app.ingestion.embedder import APIEmbedder
 logger = logging.getLogger(__name__)
 
 
+class AppResources(NamedTuple):
+    session_factory: async_sessionmaker[AsyncSession]
+    qdrant_client: QdrantService
+    embedder: APIEmbedder
+    generator: LLMGenerator | None
+
+
 async def init_deps(
     cfg: Settings | None = None,
-) -> tuple[async_sessionmaker[AsyncSession], QdrantService, APIEmbedder, LLMGenerator | None]:
+) -> AppResources:
     """Initialize SQLite tables, Qdrant collection, embedder, and optional LLM generator.
 
     Args:
@@ -61,7 +69,7 @@ async def init_deps(
             logger.warning("LLM generator disabled: llm_api_key not configured")
 
     session_factory = get_session_factory()
-    return session_factory, qdrant, embedder, generator
+    return AppResources(session_factory, qdrant, embedder, generator)
 
 
 async def teardown_deps(

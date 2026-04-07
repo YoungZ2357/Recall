@@ -1,12 +1,13 @@
 """Retrieval pipeline: query → embed → search → normalize → rerank → output.
 
-Current topology is hardcoded:
-    VectorSearcher ─┐
-                    ├─ RRF → normalize_scores → Reranker → content hydration → output
-    BM25Searcher   ─┘
+Current hardcoded topology:
+    retriever[0] ─┐
+    retriever[1] ─┼─ normalize → RRF → normalize → Reranker → hydrate → output
+    ...          ─┘
 
-Future DAG orchestration engine will replace the hardcoded topology
-with a configurable graph; see docs/instructions/retrieval/topo_abstract.md.
+Operators implement BaseRetriever / BaseReranker from operators.py.
+The DAG orchestration engine described in docs/instructions/retrieval/topo_abstract.md
+will replace this hardcoded topology; the current wiring becomes the default configuration.
 """
 
 from __future__ import annotations
@@ -18,18 +19,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.config import Settings
 from app.core.repository import ChunkAccessRepository, ChunkRepository
 from app.core.schemas import RetrievalResult
 from app.ingestion.embedder import BaseEmbedder
-from app.retrieval.reranker import Reranker
-from app.retrieval.searcher import (
-    BM25Searcher,
-    SearchQuery,
-    VectorSearcher,
-    normalize_scores,
-    reciprocal_rank_fusion,
-)
+from app.retrieval.operators import BaseReranker, BaseRetriever, PipelineContext, SearchHit
+from app.retrieval.searcher import normalize_scores, reciprocal_rank_fusion
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +33,15 @@ class RetrievalPipeline:
 
     def __init__(
         self,
-        vector_searcher: VectorSearcher,
-        bm25_searcher: BM25Searcher,
-        reranker: Reranker,
+        retrievers: list[BaseRetriever],
+        reranker: BaseReranker,
         embedder: BaseEmbedder,
         session_factory: async_sessionmaker[AsyncSession],
-        settings: Settings,
     ) -> None:
-        self._vector_searcher = vector_searcher
-        self._bm25_searcher = bm25_searcher
+        self._retrievers = retrievers
         self._reranker = reranker
         self._embedder = embedder
         self._session_factory = session_factory
-        self._settings = settings
 
     async def search(
         self,
@@ -78,52 +68,52 @@ class RetrievalPipeline:
         vectors = await self._embedder.embed_batch([query_text])
         query_embedding = vectors[0]
 
-        # 2. Parallel vector + BM25 search (recall window larger than final top_k)
-        search_query = SearchQuery(
-            text=query_text,
-            embedding=query_embedding,
-            top_k=20,
-            score_threshold=self._settings.vector_score_threshold,
+        # 2. Build shared context for all operators
+        context = PipelineContext(
+            query_text=query_text,
+            query_embedding=query_embedding,
+            session_factory=self._session_factory,
+            retention_mode=retention_mode,
+            top_k=top_k,
             filters=filters,
         )
-        vector_hits_raw, bm25_hits_raw = await asyncio.gather(
-            self._vector_searcher.search(search_query),
-            self._bm25_searcher.search(search_query),
+
+        # 3. Parallel retrieval across all registered retrievers
+        raw_results = await asyncio.gather(
+            *[r.retrieve(context) for r in self._retrievers],
             return_exceptions=True,
         )
-        if isinstance(vector_hits_raw, Exception):
-            logger.warning("Vector search failed, degrading to BM25 only: %s", vector_hits_raw)
-            vector_hits_raw = []
-        if isinstance(bm25_hits_raw, Exception):
-            logger.warning("BM25 search failed, degrading to vector only: %s", bm25_hits_raw)
-            bm25_hits_raw = []
 
-        if not vector_hits_raw and not bm25_hits_raw:
+        hits_per_path: list[list[SearchHit]] = []
+        for i, result in enumerate(raw_results):
+            if isinstance(result, Exception):
+                logger.warning("Retriever[%d] failed, skipping: %s", i, result)
+            else:
+                hits_per_path.append(result)
+
+        if not hits_per_path:
             logger.info("No hits from any search path for query=%r", query_text)
             return []
 
-        # 3. Normalize each path independently before fusion
-        vector_hits = normalize_scores(vector_hits_raw)
-        bm25_hits = normalize_scores(bm25_hits_raw)
+        # 4. Normalize each path independently before fusion
+        normalized_paths = [normalize_scores(hits) for hits in hits_per_path]
 
-        # 4. RRF fusion — guard inside reciprocal_rank_fusion handles single-path pass-through
-        active_paths = [h for h in [vector_hits, bm25_hits] if h]
-        hits = reciprocal_rank_fusion(active_paths)
+        # 5. RRF fusion (MergeDetector guard is built into reciprocal_rank_fusion)
+        active_paths = [h for h in normalized_paths if h]
+        fused_hits = reciprocal_rank_fusion(active_paths)
+        fused_hits = normalize_scores(fused_hits)
 
-        # 5. Rerank (read-only session)
-        async with self._session_factory() as session:
-            rerank_results = await self._reranker.rerank(
-                session, query_embedding, hits, retention_mode
-            )
-        if not rerank_results:
+        # 6. Rerank — session lifecycle managed internally by Reranker
+        reranked = await self._reranker.rerank(fused_hits, context)
+        if not reranked:
             logger.info("All hits filtered by reranker threshold for query=%r", query_text)
             return []
 
-        # 6. Truncate to top_k
-        rerank_results = rerank_results[:top_k]
-        chunk_ids = [UUID(str(r.chunk_id)) for r in rerank_results]
+        # 7. Truncate to top_k
+        reranked = reranked[:top_k]
+        chunk_ids = [UUID(r.chunk_id) for r in reranked]
 
-        # 7. Hydrate content + optionally record access
+        # 8. Hydrate content + optionally record access
         async with self._session_factory() as session:
             content_map = await ChunkRepository.get_content_by_ids(session, chunk_ids)
             title_map = await ChunkRepository.get_document_titles_by_chunk_ids(session, chunk_ids)
@@ -131,18 +121,18 @@ class RetrievalPipeline:
                 await ChunkAccessRepository.record_access(session, chunk_ids)
             await session.commit()
 
-        # 8. Assemble output
+        # 9. Assemble output — SearchHit.score is final_score after rerank stage
         results = [
             RetrievalResult(
-                chunk_id=r.chunk_id,
-                final_score=r.final_score,
-                retrieval_score=r.retrieval_score,
-                metadata_score=r.metadata_score,
-                retention_score=r.retention_score,
-                content=content_map.get(str(r.chunk_id), ""),
-                document_title=title_map.get(str(r.chunk_id)),
+                chunk_id=UUID(r.chunk_id),
+                final_score=r.score,
+                retrieval_score=r.retrieval_score or 0.0,
+                metadata_score=r.metadata_score or 0.0,
+                retention_score=r.retention_score or 0.0,
+                content=content_map.get(r.chunk_id, ""),
+                document_title=title_map.get(r.chunk_id),
             )
-            for r in rerank_results
+            for r in reranked
         ]
 
         logger.info(

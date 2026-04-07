@@ -15,6 +15,7 @@ from app.cli._init_deps import init_deps, teardown_deps
 from app.config import settings
 from app.core.chunk_manager import ChunkManager
 from app.core.models import SyncStatus
+from app.core.pipeline_deps import PipelineDeps
 from app.core.repository import DocumentRepository
 from app.retrieval.pipeline import RetrievalPipeline
 from app.retrieval.reranker import Reranker
@@ -29,16 +30,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(server: FastMCP):  # noqa: ARG001
-    session_factory, qdrant, embedder, generator = await init_deps(settings)
+    resources = await init_deps(settings)
     try:
         yield {
-            "session_factory": session_factory,
-            "qdrant": qdrant,
-            "embedder": embedder,
-            "generator": generator,
+            "session_factory": resources.session_factory,
+            "qdrant": resources.qdrant_client,
+            "embedder": resources.embedder,
+            "generator": resources.generator,
         }
     finally:
-        await teardown_deps(qdrant, embedder, generator)
+        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
 
 
 mcp = FastMCP("Recall", lifespan=lifespan)
@@ -50,13 +51,16 @@ mcp = FastMCP("Recall", lifespan=lifespan)
 
 def _build_pipeline(lc: dict) -> RetrievalPipeline:
     """Construct a RetrievalPipeline from the lifespan context."""
+    deps = PipelineDeps(
+        embedder=lc["embedder"],
+        qdrant_client=lc["qdrant"],
+        session_factory=lc["session_factory"],
+    )
     return RetrievalPipeline(
-        vector_searcher=VectorSearcher(lc["qdrant"], lc["embedder"]),
-        bm25_searcher=BM25Searcher(lc["session_factory"]),
-        reranker=Reranker(lc["embedder"], settings),
+        retrievers=[VectorSearcher(deps), BM25Searcher(deps)],
+        reranker=Reranker(deps),
         embedder=lc["embedder"],
         session_factory=lc["session_factory"],
-        settings=settings,
     )
 
 

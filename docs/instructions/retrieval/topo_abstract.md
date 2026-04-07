@@ -20,7 +20,7 @@
   - **特性**：可存在多种不同算法实现的检索算子实例
 - **重排序算子 (Reranker)**
   - **输入**：`list[SearchHit]`
-  - **输出**：`list[SearchHit]`
+  - **输出**：`list[SearchHit]`（`score` 字段为最终加权分数，`source="rerank"`；`retrieval_score` / `metadata_score` / `retention_score` 三个可选字段同时填充，保留评分明细）
   - **语义**：对检索结果应用某种评分函数重新计算分数，改变原有排序
   - **特性**：可存在多种不同算法实现的重排序算子实例
 - **标准化算子 (Normalizer)**
@@ -33,6 +33,7 @@
   - **输出**：`list[list[SearchHit]]`
   - **语义**：检测输入通路的数量，当存在多条通路时，将结果包装为复合结构
   - **触发条件**：输入通路数量 > 1
+  - **实现说明**：MergeDetector 的守卫逻辑已内嵌于 `reciprocal_rank_fusion()` 函数（1 条通路时原样透传，≥2 条时触发融合），无需单独实现为独立算子
 - **分数融合算子 (RRF)**
   - **输入**：`list[list[SearchHit]]`
   - **输出**：`list[SearchHit]`

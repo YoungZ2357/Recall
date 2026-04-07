@@ -38,17 +38,13 @@ class ChunkIngest(BaseModel):
     context_embedded: bool = False
 
 
-class RerankResult(BaseModel):
-    """Single reranked result with score breakdown."""
-    chunk_id: PyUUID
-    final_score: float
-    retrieval_score: float
-    metadata_score: float
-    retention_score: float
-
-
 class RetrievalResult(BaseModel):
-    """Pipeline output: rerank scores + chunk content."""
+    """Pipeline output: rerank scores + chunk content.
+
+    Assembled from a SearchHit (source="rerank") plus hydrated content.
+    final_score maps to SearchHit.score; breakdown fields map to the
+    optional SearchHit.retrieval_score / metadata_score / retention_score.
+    """
     chunk_id: PyUUID
     final_score: float
     retrieval_score: float

@@ -44,30 +44,31 @@ async def _run_generate(
     stream: bool,
 ) -> None:
     from app.config import settings
-
+    from app.core.pipeline_deps import PipelineDeps
     from app.retrieval.pipeline import RetrievalPipeline
     from app.retrieval.reranker import Reranker
     from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
-    session_factory, qdrant, embedder, generator = await init_deps(settings)
+    resources = await init_deps()
     try:
-        if generator is None:
+        if resources.generator is None:
             console.print(
                 "[red]LLM generator not available.[/red] "
                 "Set the [bold]LLM_API_KEY[/bold] environment variable to enable generation."
             )
             raise typer.Exit(code=1)
 
-        vector_searcher = VectorSearcher(qdrant, embedder)
-        bm25_searcher = BM25Searcher(session_factory)
-        reranker = Reranker(embedder, settings)
+        generator = resources.generator
+        deps = PipelineDeps(
+            embedder=resources.embedder,
+            qdrant_client=resources.qdrant_client,
+            session_factory=resources.session_factory,
+        )
         pipeline = RetrievalPipeline(
-            vector_searcher=vector_searcher,
-            bm25_searcher=bm25_searcher,
-            reranker=reranker,
-            embedder=embedder,
-            session_factory=session_factory,
-            settings=settings,
+            retrievers=[VectorSearcher(deps), BM25Searcher(deps)],
+            reranker=Reranker(deps),
+            embedder=resources.embedder,
+            session_factory=resources.session_factory,
         )
 
         results = await pipeline.search(
@@ -128,4 +129,4 @@ async def _run_generate(
                 )
 
     finally:
-        await teardown_deps(qdrant, embedder, generator)
+        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
