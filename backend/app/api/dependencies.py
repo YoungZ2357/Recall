@@ -52,12 +52,17 @@ def get_retrieval_pipeline(
     embedder: Annotated[APIEmbedder, Depends(get_embedder)],
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
 ) -> RetrievalPipeline:
+    from app.retrieval import workflows
     deps = PipelineDeps(
         embedder=embedder,
         qdrant_client=qdrant,
         session_factory=session_factory,
     )
-    return RetrievalPipeline(deps)
+    return RetrievalPipeline(
+        dag=workflows.hybrid(deps),
+        embedder=deps.embedder,
+        session_factory=deps.session_factory,
+    )
 
 
 def get_ingestion_pipeline(

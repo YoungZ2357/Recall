@@ -49,12 +49,17 @@ mcp = FastMCP("Recall", lifespan=lifespan)
 
 def _build_pipeline(lc: dict) -> RetrievalPipeline:
     """Construct a RetrievalPipeline from the lifespan context."""
+    from app.retrieval import workflows
     deps = PipelineDeps(
         embedder=lc["embedder"],
         qdrant_client=lc["qdrant"],
         session_factory=lc["session_factory"],
     )
-    return RetrievalPipeline(deps)
+    return RetrievalPipeline(
+        dag=workflows.hybrid(deps),
+        embedder=deps.embedder,
+        session_factory=deps.session_factory,
+    )
 
 
 # ---------------------------------------------------------------------------

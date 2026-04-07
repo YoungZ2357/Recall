@@ -138,6 +138,7 @@ async def _run_eval(
     from app.core.pipeline_deps import PipelineDeps
     from app.evaluation.runner import run_evaluation
     from app.evaluation.schemas import TestSetEntry
+    from app.retrieval import workflows
     from app.retrieval.pipeline import RetrievalPipeline
 
     # Load test set
@@ -157,7 +158,11 @@ async def _run_eval(
             qdrant_client=resources.qdrant_client,
             session_factory=resources.session_factory,
         )
-        pipeline = RetrievalPipeline(deps)
+        pipeline = RetrievalPipeline(
+            dag=workflows.hybrid(deps),
+            embedder=deps.embedder,
+            session_factory=deps.session_factory,
+        )
 
         with Progress(
             SpinnerColumn(),

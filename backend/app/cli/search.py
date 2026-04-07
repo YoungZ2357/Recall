@@ -42,6 +42,7 @@ async def _run_search(
     verbose: bool,
 ) -> None:
     from app.core.pipeline_deps import PipelineDeps
+    from app.retrieval import workflows
     from app.retrieval.pipeline import RetrievalPipeline
 
     resources = await init_deps()
@@ -51,7 +52,11 @@ async def _run_search(
             qdrant_client=resources.qdrant_client,
             session_factory=resources.session_factory,
         )
-        pipeline = RetrievalPipeline(deps)
+        pipeline = RetrievalPipeline(
+            dag=workflows.hybrid(deps),
+            embedder=deps.embedder,
+            session_factory=deps.session_factory,
+        )
 
         results = await pipeline.search(
             query_text=query,
