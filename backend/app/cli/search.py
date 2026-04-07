@@ -41,24 +41,21 @@ async def _run_search(
     mode: str,
     verbose: bool,
 ) -> None:
-    from app.config import settings
-
+    from app.core.pipeline_deps import PipelineDeps
+    from app.retrieval import workflows
     from app.retrieval.pipeline import RetrievalPipeline
-    from app.retrieval.reranker import Reranker
-    from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
-    session_factory, qdrant, embedder, _ = await init_deps(settings)
+    resources = await init_deps()
     try:
-        vector_searcher = VectorSearcher(qdrant, embedder)
-        bm25_searcher = BM25Searcher(session_factory)
-        reranker = Reranker(embedder, settings)
+        deps = PipelineDeps(
+            embedder=resources.embedder,
+            qdrant_client=resources.qdrant_client,
+            session_factory=resources.session_factory,
+        )
         pipeline = RetrievalPipeline(
-            vector_searcher=vector_searcher,
-            bm25_searcher=bm25_searcher,
-            reranker=reranker,
-            embedder=embedder,
-            session_factory=session_factory,
-            settings=settings,
+            dag=workflows.hybrid(deps),
+            embedder=deps.embedder,
+            session_factory=deps.session_factory,
         )
 
         results = await pipeline.search(
@@ -108,4 +105,4 @@ async def _run_search(
         console.print(table)
 
     finally:
-        await teardown_deps(qdrant, embedder)
+        await teardown_deps(resources.qdrant_client, resources.embedder)

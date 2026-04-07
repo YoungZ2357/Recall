@@ -5,13 +5,11 @@ from typing import Literal
 from uuid import UUID
 
 import numpy as np
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import Settings
+from app.core.pipeline_deps import PipelineDeps
 from app.core.repository import AccessSummary, ChunkAccessRepository, ChunkRepository
-from app.core.schemas import RerankResult
-from app.ingestion.embedder import BaseEmbedder
-from app.retrieval.searcher import SearchHit
+from app.retrieval.configs import RerankerConfig
+from app.retrieval.operators import BaseReranker, PipelineContext, SearchHit
 
 logger = logging.getLogger(__name__)
 
@@ -26,76 +24,83 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return float(np.dot(va, vb) / denom)
 
 
-class Reranker:
-    """Weighted-score reranker: final = α·vector_sim + β·metadata + γ·retention."""
+class Reranker(BaseReranker):
+    """Weighted-score reranker: final = α·retrieval_score + β·metadata + γ·retention.
 
-    def __init__(self, embedder: BaseEmbedder, settings: Settings) -> None:
-        self._embedder = embedder
-        self._alpha = settings.reranker_alpha
-        self._beta = settings.reranker_beta
-        self._gamma = settings.reranker_gamma
-        self._s_base = settings.reranker_s_base
-        self._tag_fallback = settings.reranker_tag_fallback
-        self._score_threshold = settings.reranker_score_threshold
+    Implements BaseReranker. Returns list[SearchHit] where:
+        - score          = final weighted score
+        - source         = "rerank"
+        - retrieval_score, metadata_score, retention_score are populated
+    """
+
+    def __init__(self, deps: PipelineDeps, config: RerankerConfig | None = None) -> None:
+        config = config or RerankerConfig()
+        self._embedder = deps.embedder
+        self._session_factory = deps.session_factory
+        self._alpha = config.alpha
+        self._beta = config.beta
+        self._gamma = config.gamma
+        self._s_base = config.s_base
+        self._tag_fallback = config.tag_fallback
+        self._score_threshold = config.score_threshold
+        self._retention_mode = config.retention_mode
 
     async def rerank(
         self,
-        session: AsyncSession,
-        query_embedding: list[float],
         hits: list[SearchHit],
-        retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent",
-    ) -> list[RerankResult]:
+        context: PipelineContext,
+    ) -> list[SearchHit]:
         """Rerank search hits using weighted scoring.
 
+        Opens its own database session from context.session_factory.
+
         Args:
-            session: Active database session.
-            query_embedding: Query vector for tag similarity.
-            hits: Raw search results from searcher.
-            retention_mode: "prefer_recent" boosts recently accessed chunks,
-                            "awaken_forgotten" boosts long-unseen chunks.
+            hits: Raw search results from retrieval stage.
+            context: Per-query pipeline state (query_embedding, retention_mode,
+                     session_factory).
 
         Returns:
-            Sorted list of RerankResult, filtered by score threshold.
+            Sorted list of SearchHit with source="rerank". Each hit has
+            score=final_score and breakdown fields populated.
+            Hits below score_threshold are filtered out.
         """
         if not hits:
             return []
 
+        query_embedding = context.query_embedding
+        retention_mode = context.retention_mode
         chunk_ids = [UUID(h.chunk_id) for h in hits]
 
-        # Parallel DB fetches
-        tags_map = await ChunkRepository.get_tags_by_ids(session, chunk_ids)
-        access_map = await ChunkAccessRepository.get_access_summary(session, chunk_ids)
-        weight_map = await ChunkRepository.get_document_weights_by_chunk_ids(session, chunk_ids)
+        async with context.session_factory() as session:
+            tags_map = await ChunkRepository.get_tags_by_ids(session, chunk_ids)
+            access_map = await ChunkAccessRepository.get_access_summary(session, chunk_ids)
+            weight_map = await ChunkRepository.get_document_weights_by_chunk_ids(session, chunk_ids)
 
-        # Compute sub-scores
         metadata_scores = await self._compute_metadata_scores(
             query_embedding, tags_map, weight_map
         )
         retention_scores = self._compute_retention_scores(access_map, retention_mode)
 
-        # Weighted merge
-        results: list[RerankResult] = []
+        results: list[SearchHit] = []
         for hit in hits:
             cid = hit.chunk_id
-            retrieval_score = hit.score
+            ret_score = hit.score
             meta = metadata_scores.get(cid, self._tag_fallback)
             ret = retention_scores.get(cid, 0.0 if retention_mode == "prefer_recent" else 1.0)
 
-            final = self._alpha * retrieval_score + self._beta * meta + self._gamma * ret
+            final = self._alpha * ret_score + self._beta * meta + self._gamma * ret
 
-            results.append(RerankResult(
-                chunk_id=UUID(cid),
-                final_score=round(final, 6),
-                retrieval_score=round(retrieval_score, 6),
+            results.append(SearchHit(
+                chunk_id=cid,
+                score=round(final, 6),
+                source="rerank",
+                retrieval_score=round(ret_score, 6),
                 metadata_score=round(meta, 6),
                 retention_score=round(ret, 6),
             ))
 
-        # Sort descending by final_score
-        results.sort(key=lambda r: r.final_score, reverse=True)
-
-        # Filter below threshold
-        results = [r for r in results if r.final_score >= self._score_threshold]
+        results.sort(key=lambda r: r.score, reverse=True)
+        results = [r for r in results if r.score >= self._score_threshold]
 
         logger.debug(
             "Reranker: %d hits → %d results (threshold=%.2f)",
@@ -116,7 +121,6 @@ class Reranker:
           score *= document_weight
         Chunks with no tags get fallback * document_weight.
         """
-        # Collect all unique tags
         unique_tags: list[str] = list({
             tag for tags in chunk_tags_map.values() for tag in tags
         })
@@ -134,7 +138,6 @@ class Reranker:
                 scores[chunk_id] = self._tag_fallback * doc_weight
                 continue
 
-            # Max cosine similarity, normalized from [-1,1] to [0,1]
             max_sim = max(
                 _cosine_similarity(query_embedding, tag_embeddings[tag])
                 for tag in tags
@@ -164,14 +167,10 @@ class Reranker:
 
         for chunk_id, summary in access_summaries.items():
             if summary.last_accessed_at is None:
-                if retention_mode == "prefer_recent":
-                    scores[chunk_id] = 0.0
-                else:
-                    scores[chunk_id] = 1.0
+                scores[chunk_id] = 0.0 if retention_mode == "prefer_recent" else 1.0
                 continue
 
             last = summary.last_accessed_at
-            # Ensure timezone-aware comparison
             if last.tzinfo is None:
                 last = last.replace(tzinfo=UTC)
 
@@ -179,9 +178,6 @@ class Reranker:
             s = self._s_base * (1.0 + math.log(1.0 + summary.access_count))
             r = math.exp(-t_hours / s) if s > 0 else 0.0
 
-            if retention_mode == "prefer_recent":
-                scores[chunk_id] = r
-            else:
-                scores[chunk_id] = 1.0 - r
+            scores[chunk_id] = r if retention_mode == "prefer_recent" else 1.0 - r
 
         return scores

@@ -80,14 +80,16 @@ async def _run_generate_set(
     from app.evaluation.sampler import sample_chunks_stratified
     from app.evaluation.synthesizer import generate_test_set
 
-    session_factory, qdrant, embedder, generator = await init_deps(settings)
+    resources = await init_deps()
     try:
-        if generator is None:
+        if resources.generator is None:
             console.print("[red]Error: LLM_API_KEY not configured. Cannot generate queries.[/red]")
             raise typer.Exit(code=1)
 
+        generator = resources.generator
+
         # 1. Sample chunks
-        async with session_factory() as session:
+        async with resources.session_factory() as session:
             sampled = await sample_chunks_stratified(
                 session, total_n=num_chunks, min_content_length=min_length
             )
@@ -124,7 +126,7 @@ async def _run_generate_set(
         )
 
     finally:
-        await teardown_deps(qdrant, embedder, generator)
+        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
 
 
 async def _run_eval(
@@ -133,12 +135,11 @@ async def _run_eval(
     output_path: str,
     mode: str,
 ) -> None:
-    from app.config import settings
+    from app.core.pipeline_deps import PipelineDeps
     from app.evaluation.runner import run_evaluation
     from app.evaluation.schemas import TestSetEntry
+    from app.retrieval import workflows
     from app.retrieval.pipeline import RetrievalPipeline
-    from app.retrieval.reranker import Reranker
-    from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
     # Load test set
     path = Path(test_set_path)
@@ -150,19 +151,17 @@ async def _run_eval(
     test_set = [TestSetEntry.model_validate(item) for item in raw]
     console.print(f"Loaded [cyan]{len(test_set)}[/cyan] queries from [cyan]{path}[/cyan]")
 
-    session_factory, qdrant, embedder, generator = await init_deps(settings)
+    resources = await init_deps()
     try:
-        # Build retrieval pipeline (same pattern as cli/search.py)
-        vector_searcher = VectorSearcher(qdrant, embedder)
-        bm25_searcher = BM25Searcher(session_factory)
-        reranker = Reranker(embedder, settings)
+        deps = PipelineDeps(
+            embedder=resources.embedder,
+            qdrant_client=resources.qdrant_client,
+            session_factory=resources.session_factory,
+        )
         pipeline = RetrievalPipeline(
-            vector_searcher=vector_searcher,
-            bm25_searcher=bm25_searcher,
-            reranker=reranker,
-            embedder=embedder,
-            session_factory=session_factory,
-            settings=settings,
+            dag=workflows.hybrid(deps),
+            embedder=deps.embedder,
+            session_factory=deps.session_factory,
         )
 
         with Progress(
@@ -230,4 +229,4 @@ async def _run_eval(
             console.print(f"Report written to [cyan]{out}[/cyan]")
 
     finally:
-        await teardown_deps(qdrant, embedder, generator)
+        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)

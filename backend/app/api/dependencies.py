@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import Settings, settings as _settings
 from app.core.database import get_session
 from app.core.exceptions import ConfigError
+from app.core.pipeline_deps import PipelineDeps
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.chunker import RecursiveSplitStrategy
@@ -13,8 +14,6 @@ from app.ingestion.embedder import APIEmbedder
 from app.ingestion.parser import get_parser
 from app.ingestion.pipeline import IngestionPipeline
 from app.retrieval.pipeline import RetrievalPipeline
-from app.retrieval.reranker import Reranker
-from app.retrieval.searcher import BM25Searcher, VectorSearcher
 
 
 # --- Base resources (extracted from app.state) ---
@@ -52,18 +51,17 @@ def get_retrieval_pipeline(
     qdrant: Annotated[QdrantService, Depends(get_qdrant)],
     embedder: Annotated[APIEmbedder, Depends(get_embedder)],
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
-    cfg: Annotated[Settings, Depends(get_settings)],
 ) -> RetrievalPipeline:
-    vector_searcher = VectorSearcher(qdrant_service=qdrant, embedder=embedder)
-    bm25_searcher = BM25Searcher(session_factory=session_factory)
-    reranker = Reranker(embedder=embedder, settings=cfg)
-    return RetrievalPipeline(
-        vector_searcher=vector_searcher,
-        bm25_searcher=bm25_searcher,
-        reranker=reranker,
+    from app.retrieval import workflows
+    deps = PipelineDeps(
         embedder=embedder,
+        qdrant_client=qdrant,
         session_factory=session_factory,
-        settings=cfg,
+    )
+    return RetrievalPipeline(
+        dag=workflows.hybrid(deps),
+        embedder=deps.embedder,
+        session_factory=deps.session_factory,
     )
 
 
