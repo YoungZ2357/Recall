@@ -14,12 +14,14 @@ from app.retrieval.configs import (
     RerankerConfig,
     RRFMergerConfig,
     VectorSearcherConfig,
+    ContextualBM25SearcherConfig,
 )
 from app.retrieval.engine import RetrievalPipeline
 from app.retrieval.graph import GraphBuilder
 from app.retrieval.merger import RRFMerger
 from app.retrieval.reranker import Reranker
-from app.retrieval.searcher import BM25Searcher, VectorSearcher
+from app.retrieval.searcher import BM25Searcher, VectorSearcher, ContextualBM25Searcher
+
 
 
 def _reranker_config_from_settings() -> RerankerConfig:
@@ -48,6 +50,15 @@ def _bm25_config_from_settings() -> BM25SearcherConfig:
 
 def _rrf_config_from_settings() -> RRFMergerConfig:
     return RRFMergerConfig(k=_settings.rrf_k)
+def _contextual_bm25_config_from_settings() -> ContextualBM25SearcherConfig:
+    return ContextualBM25SearcherConfig(
+        score_threshold=_settings.vector_score_threshold,
+    )
+
+
+def _rrf_config_from_settings() -> RRFMergerConfig:
+    return RRFMergerConfig(k=_settings.rrf_k)
+
 
 
 def linear(
@@ -98,3 +109,30 @@ def hybrid(
     )
 
 
+def hybrid_contextual_bm25(
+    deps: PipelineDeps,
+    vector_config: VectorSearcherConfig | None = None,
+    c_bm25_config: ContextualBM25SearcherConfig | None = None,
+    rrf_config: RRFMergerConfig | None = None,
+    reranker_config: RerankerConfig | None = None,
+) -> RetrievalPipeline:
+    """Dual-retriever hybrid search: VectorSearcher + BM25 → RRF → Reranker.
+
+    Topology:
+        vec             ─ Normalizer ─┐
+                                      ├─ RRFMerger ─ Normalizer ─ reranker ─ Normalizer
+        contextual_bm25 ─ Normalizer ─┘
+    """
+    return (
+        GraphBuilder()
+        .add_node("vector", VectorSearcher, vector_config or _vector_config_from_settings())
+        .add_node("c_bm25", ContextualBM25Searcher, c_bm25_config or _contextual_bm25_config_from_settings())
+        .add_node("merge", RRFMerger, rrf_config or _rrf_config_from_settings())
+        .add_node("rerank", Reranker, reranker_config or _reranker_config_from_settings())
+        .add_edges([
+            ("vector", "merge"),
+            ("c_bm25", "merge"),
+            ("merge", "rerank"),
+        ])
+        .build(deps)
+    )

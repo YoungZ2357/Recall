@@ -377,6 +377,106 @@ class FTSRepository:
         return [(row.chunk_id, row.score) for row in result]
 
 
+    @staticmethod
+    async def context_bulk_insert(session: AsyncSession, chunks: list[Chunk]) -> None:
+        """Insert chunks with non-null context into the context FTS index.
+
+        Indexed text is context + '\\n\\n' + content.
+        Uses INSERT OR IGNORE for idempotency. Chunks with context=None are skipped.
+        """
+        rows = [c for c in chunks if c.context is not None]
+        if not rows:
+            return
+        await session.execute(
+            text(
+                "INSERT OR IGNORE INTO chunks_context_fts(chunk_id, document_id, context) "
+                "VALUES (:cid, :did, :context)"
+            ),
+            [
+                {
+                    "cid": str(c.chunk_id),
+                    "did": str(c.document_id),
+                    "context": c.context + "\n\n" + c.content,
+                }
+                for c in rows
+            ],
+        )
+
+    @staticmethod
+    async def context_bulk_insert_raw(
+        session: AsyncSession,
+        items: list[tuple[UUID, UUID, str, str]],
+    ) -> None:
+        """Insert (chunk_id, document_id, context, content) into the context FTS index.
+
+        Indexed text is context + '\\n\\n' + content.
+        Use this when ORM Chunk objects are not available (e.g. in contextualize CLI).
+        Uses INSERT OR REPLACE to handle re-contextualization of the same chunk.
+        """
+        if not items:
+            return
+        await session.execute(
+            text(
+                "INSERT OR REPLACE INTO chunks_context_fts(chunk_id, document_id, context) "
+                "VALUES (:cid, :did, :context)"
+            ),
+            [
+                {"cid": str(cid), "did": str(did), "context": ctx + "\n\n" + content}
+                for cid, did, ctx, content in items
+            ],
+        )
+
+    @staticmethod
+    async def context_delete_by_document(session: AsyncSession, document_id: UUID) -> None:
+        """Remove all context FTS rows for a document."""
+        await session.execute(
+            text("DELETE FROM chunks_context_fts WHERE document_id = :did"),
+            {"did": str(document_id)},
+        )
+
+    @staticmethod
+    async def context_delete_by_chunk_id(session: AsyncSession, chunk_id: UUID) -> None:
+        """Remove the context FTS row for a single chunk."""
+        await session.execute(
+            text("DELETE FROM chunks_context_fts WHERE chunk_id = :cid"),
+            {"cid": str(chunk_id)},
+        )
+
+    @staticmethod
+    async def context_fts_search(
+        session: AsyncSession,
+        query_text: str,
+        top_k: int,
+        document_id: str | None = None,
+    ) -> list[tuple[str, float]]:
+        """BM25 search over chunk context text.
+
+        Returns:
+            List of (chunk_id_str, raw_bm25_score) ordered by relevance ascending
+            (SQLite bm25() returns negative values — lower means more relevant).
+        """
+        safe_query = query_text.replace('"', " ").strip()
+        if not safe_query:
+            return []
+
+        params: dict = {"q": f'"{safe_query}"', "top_k": top_k}
+        filter_clause = ""
+        if document_id:
+            filter_clause = "AND document_id = :doc_id"
+            params["doc_id"] = document_id
+
+        result = await session.execute(
+            text(
+                f"SELECT chunk_id, bm25(chunks_context_fts) AS score "
+                f"FROM chunks_context_fts "
+                f"WHERE chunks_context_fts MATCH :q {filter_clause} "
+                f"ORDER BY score LIMIT :top_k"
+            ),
+            params,
+        )
+        return [(row.chunk_id, row.score) for row in result]
+
+
 class ChunkAccessRepository:
     """Repository for append-only chunk access logs."""
 

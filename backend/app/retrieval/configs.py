@@ -21,6 +21,12 @@ class BM25SearcherConfig(BaseModel, frozen=True):
     recall_multiplier: int = 2
 
 
+class ContextualBM25SearcherConfig(BaseModel, frozen=True):
+    score_threshold: float = 0.35
+    top_k: int = 10
+    recall_multiplier: int = 2
+
+
 class RerankerConfig(BaseModel, frozen=True):
     alpha: float = 0.6
     beta: float = 0.2

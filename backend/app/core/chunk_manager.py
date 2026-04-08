@@ -233,8 +233,9 @@ class ChunkManager:
                 orm_chunk.tags = json.dumps(chunk.tags, ensure_ascii=False)
             orm_chunk.context = chunk.context
 
-        # Sync to FTS index (SQLite is source of truth; FTS mirrors it)
+        # Sync to FTS indexes (SQLite is source of truth; FTS mirrors it)
         await FTSRepository.bulk_insert(session, orm_chunks)
+        await FTSRepository.context_bulk_insert(session, orm_chunks)
 
         # Build Qdrant points — use current time for created_at to avoid
         # async lazy-load of server_default attribute after flush
@@ -308,8 +309,9 @@ class ChunkManager:
             logger.error(f"Qdrant delete failed for document {doc_id}: {e}")
             raise  # SQLite untouched; caller can retry
 
-        # Delete from FTS index before SQLite rows are removed
+        # Delete from FTS indexes before SQLite rows are removed
         await FTSRepository.delete_by_document(session, UUID(doc_id))
+        await FTSRepository.context_delete_by_document(session, UUID(doc_id))
 
         # Delete document from SQLite (cascades to chunks via ORM relationship)
         await DocumentRepository.delete(session, UUID(doc_id))
@@ -347,6 +349,7 @@ class ChunkManager:
             logger.warning(f"Qdrant delete failed for chunk {chunk_id}: {e}")
 
         await FTSRepository.delete_by_chunk_id(session, UUID(chunk_id))
+        await FTSRepository.context_delete_by_chunk_id(session, UUID(chunk_id))
         await ChunkRepository.delete_by_id(session, UUID(chunk_id))
         await session.commit()
         logger.info(f"Deleted chunk {chunk_id} from all stores")

@@ -142,6 +142,30 @@ results = await active.search(query_text="...")
 
 ---
 
+## Switching the active topology
+
+The active topology is hardcoded in **5 call sites**. Change `workflows.hybrid(deps)` to
+the desired factory at each location:
+
+| File | Line | Context |
+|---|---|---|
+| `backend/app/cli/search.py` | 56 | `search` CLI command |
+| `backend/app/cli/generate.py` | 67 | `generate` CLI command |
+| `backend/app/cli/eval.py` | 221 | `eval run` command |
+| `backend/app/api/dependencies.py` | 62 | FastAPI HTTP endpoints |
+| `backend/app/mcp/server.py` | 59 | MCP server |
+
+Example — switch all CLI commands and API to `hybrid_contextual_bm25`:
+
+```python
+dag=workflows.hybrid_contextual_bm25(deps),
+```
+
+No changes to `deps` are needed; `PipelineDeps` is sufficient for all currently
+defined topologies.
+
+---
+
 ## Topology constraints enforced by GraphBuilder
 
 `validate()` rejects graphs that violate these rules (raises on first violation):

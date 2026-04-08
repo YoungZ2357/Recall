@@ -7,7 +7,7 @@ from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 from app.core.exceptions import EmbeddingError, RetrievalError, VectorDBError
 from app.core.pipeline_deps import PipelineDeps
 from app.core.repository import FTSRepository
-from app.retrieval.configs import BM25SearcherConfig, VectorSearcherConfig
+from app.retrieval.configs import BM25SearcherConfig, ContextualBM25SearcherConfig, VectorSearcherConfig
 from app.retrieval.operators import BaseRetriever, PipelineContext, SearchHit
 
 logger = logging.getLogger(__name__)
@@ -304,4 +304,76 @@ class BM25Searcher(BaseRetriever):
             for chunk_id, raw_score in rows
         ]
         logger.debug("BM25Searcher returned %d hits for query=%r", len(hits), query.text)
+        return hits
+
+
+class ContextualBM25Searcher(BaseRetriever):
+    """SQLite FTS5 sparse recall using Chunk.context (contextualized text).
+
+    Only chunks that have been contextualized (context IS NOT NULL) are indexed
+    and can appear in results. Intended to run alongside BM25Searcher and be
+    merged via RRF.
+    """
+
+    def __init__(
+        self,
+        deps: PipelineDeps,
+        config: ContextualBM25SearcherConfig | None = None,
+    ) -> None:
+        config = config or ContextualBM25SearcherConfig()
+        self._session_factory = deps.session_factory
+        self._recall_multiplier = config.recall_multiplier
+        self._top_k = config.top_k
+        self._score_threshold = config.score_threshold
+
+    async def retrieve(self, context: PipelineContext) -> list[SearchHit]:
+        """Implement BaseRetriever: translate PipelineContext to SearchQuery and search."""
+        query = SearchQuery(
+            text=context.query_text,
+            top_k=context.top_k * 2,
+            filters=context.filters,
+        )
+        return await self._search(query)
+
+    async def _search(self, query: SearchQuery) -> list[SearchHit]:
+        """Execute BM25 full-text search against the context FTS index.
+
+        Args:
+            query: Internal search parameters. Only `text`, `top_k`, and
+                   `filters["document_id"]` are used; tag filters are ignored.
+
+        Returns:
+            List of SearchHit sorted by descending relevance.
+
+        Raises:
+            RetrievalError: Database error during FTS search.
+        """
+        document_id: str | None = None
+        if query.filters:
+            document_id = query.filters.get("document_id")
+
+        try:
+            async with self._session_factory() as session:
+                rows = await FTSRepository.context_fts_search(
+                    session,
+                    query.text,
+                    query.top_k * self._recall_multiplier,
+                    document_id=document_id,
+                )
+        except Exception as e:
+            raise RetrievalError(
+                message="Contextual BM25 search failed",
+                detail=str(e),
+            ) from e
+
+        if not rows:
+            return []
+
+        hits = [
+            SearchHit(chunk_id=chunk_id, score=-raw_score, source="context_bm25")
+            for chunk_id, raw_score in rows
+        ]
+        logger.debug(
+            "ContextualBM25Searcher returned %d hits for query=%r", len(hits), query.text
+        )
         return hits

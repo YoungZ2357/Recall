@@ -56,7 +56,7 @@ async def _run_contextualize(
 
     from app.config import settings
     from app.core.models import SyncStatus
-    from app.core.repository import ChunkRepository, DocumentRepository
+    from app.core.repository import ChunkRepository, DocumentRepository, FTSRepository
     from app.ingestion.contextualizer import ContextGenerator
     from app.ingestion.parser import get_parser
 
@@ -192,6 +192,21 @@ async def _run_contextualize(
                         await ChunkRepository.bulk_update_context(
                             session, updates, SyncStatus.DIRTY
                         )
+                        # Sync updated context to FTS index; use INSERT OR REPLACE
+                        # to handle chunks being re-contextualized.
+                        doc_id_map: dict[str, UUID] = {
+                            str(cs["chunk_id"]): UUID(doc_id_str)
+                            for cs in chunk_snapshots
+                        }
+                        content_map: dict[str, str] = {
+                            str(cs["chunk_id"]): cs["content"]
+                            for cs in chunk_snapshots
+                        }
+                        fts_items = [
+                            (chunk_id, doc_id_map[str(chunk_id)], ctx, content_map[str(chunk_id)])
+                            for chunk_id, ctx in updates
+                        ]
+                        await FTSRepository.context_bulk_insert_raw(session, fts_items)
                         await session.commit()
 
                     embed_items = [

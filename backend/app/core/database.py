@@ -198,3 +198,50 @@ async def populate_fts_from_chunks() -> None:
         raise
     except Exception as e:
         raise DatabaseError(detail=str(e)) from e
+
+
+async def create_context_fts_table() -> None:
+    """Create FTS5 virtual table for context-based BM25 search if not exists."""
+    try:
+        async with get_engine().begin() as conn:
+            await conn.execute(text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_context_fts "
+                "USING fts5("
+                "chunk_id UNINDEXED, "
+                "document_id UNINDEXED, "
+                "context, "
+                "tokenize='unicode61 remove_diacritics 1'"
+                ")"
+            ))
+    except RecallError:
+        raise
+    except Exception as e:
+        raise DatabaseError(detail=str(e)) from e
+
+
+async def populate_context_fts_from_chunks() -> None:
+    """Fill context FTS table from chunks with non-null context (idempotent, runs at startup).
+
+    Compares row counts and re-syncs if out of step. Only indexes chunks
+    where context IS NOT NULL.
+    """
+    try:
+        async with get_engine().begin() as conn:
+            fts_result = await conn.execute(text("SELECT COUNT(*) FROM chunks_context_fts"))
+            fts_count = fts_result.scalar()
+            src_result = await conn.execute(
+                text("SELECT COUNT(*) FROM chunks WHERE context IS NOT NULL")
+            )
+            src_count = src_result.scalar()
+            if fts_count == src_count:
+                return
+            await conn.execute(text(
+                "INSERT OR IGNORE INTO chunks_context_fts(chunk_id, document_id, context) "
+                "SELECT CAST(chunk_id AS TEXT), CAST(document_id AS TEXT), "
+                "context || char(10) || char(10) || content "
+                "FROM chunks WHERE context IS NOT NULL"
+            ))
+    except RecallError:
+        raise
+    except Exception as e:
+        raise DatabaseError(detail=str(e)) from e

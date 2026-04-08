@@ -9,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import Settings, settings as _default_settings
 from app.core.database import (
+    create_context_fts_table,
     create_fts_table,
     create_tables,
     dispose_engine,
     get_session_factory,
+    populate_context_fts_from_chunks,
     populate_fts_from_chunks,
 )
 from app.core.exceptions import ConfigError
@@ -44,11 +46,13 @@ async def init_deps(
     """
     cfg = cfg or _default_settings
 
-    # 1. Ensure SQLite tables and FTS index exist
+    # 1. Ensure SQLite tables and FTS indexes exist
     await create_tables()
     await create_fts_table()
     await populate_fts_from_chunks()
-    logger.debug("SQLite tables and FTS index ready")
+    await create_context_fts_table()
+    await populate_context_fts_from_chunks()
+    logger.debug("SQLite tables and FTS indexes ready")
 
     # 2. Connect to Qdrant and ensure collection exists
     qdrant = QdrantService()
