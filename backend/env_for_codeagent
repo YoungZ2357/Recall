@@ -41,4 +41,3 @@ LOG_LEVEL=INFO
 UPLOAD_FILE_DIR=data/files
 
 # tookit
-TEACHER_LLM_API=
