@@ -41,9 +41,30 @@ def generate_set(
     with_context: Annotated[
         bool, typer.Option("--with-context", help="Prepend each chunk's context to the synthesis prompt.")
     ] = False,
+    include_doc: Annotated[
+        list[str], typer.Option("--include-doc", help="Whitelist doc-id(s). Only these documents are sampled. Mutually exclusive with --exclude-doc and --auto-split.")
+    ] = [],
+    exclude_doc: Annotated[
+        list[str], typer.Option("--exclude-doc", help="Blacklist doc-id(s). These documents are skipped. Mutually exclusive with --include-doc and --auto-split.")
+    ] = [],
+    auto_split: Annotated[
+        float, typer.Option("--auto-split", help="Fraction (0-1) of documents to randomly select for sampling. Saves a split manifest JSON alongside the output. Mutually exclusive with --include-doc and --exclude-doc.")
+    ] = 0.0,
 ) -> None:
     """Sample chunks and generate a synthetic evaluation test set via LLM."""
-    asyncio.run(_run_generate_set(output, num_chunks, queries_per_chunk, min_length, concurrency, with_context))
+    # Validate mutual exclusivity
+    active_filters = sum([bool(include_doc), bool(exclude_doc), auto_split > 0])
+    if active_filters > 1:
+        console.print("[red]Error: --include-doc, --exclude-doc, and --auto-split are mutually exclusive.[/red]")
+        raise typer.Exit(code=1)
+    if auto_split < 0.0 or auto_split > 1.0:
+        console.print("[red]Error: --auto-split must be between 0.0 and 1.0.[/red]")
+        raise typer.Exit(code=1)
+
+    asyncio.run(_run_generate_set(
+        output, num_chunks, queries_per_chunk, min_length, concurrency, with_context,
+        list(include_doc), list(exclude_doc), auto_split,
+    ))
 
 
 @eval_app.command("run")
@@ -75,8 +96,14 @@ async def _run_generate_set(
     min_length: int,
     concurrency: int,
     with_context: bool = False,
+    include_doc_ids: list[str] | None = None,
+    exclude_doc_ids: list[str] | None = None,
+    auto_split: float = 0.0,
 ) -> None:
+    import random
+
     from app.config import settings
+    from app.core.repository import DocumentRepository
     from app.evaluation.sampler import sample_chunks_stratified
     from app.evaluation.synthesizer import generate_test_set
 
@@ -88,10 +115,42 @@ async def _run_generate_set(
 
         generator = resources.generator
 
+        # Resolve auto-split: randomly partition all documents and write split manifest
+        if auto_split > 0.0:
+            async with resources.session_factory() as session:
+                all_docs = await DocumentRepository.list_all(session)
+
+            all_doc_ids = [str(d.document_id) for d in all_docs]
+            random.shuffle(all_doc_ids)
+            split_at = max(1, round(len(all_doc_ids) * auto_split))
+            included = all_doc_ids[:split_at]
+            excluded = all_doc_ids[split_at:]
+
+            split_path = Path(output_path).with_stem(Path(output_path).stem + "_split").with_suffix(".json")
+            split_path.parent.mkdir(parents=True, exist_ok=True)
+            split_path.write_text(
+                json.dumps(
+                    {"split_ratio": auto_split, "included_doc_ids": included, "excluded_doc_ids": excluded},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            console.print(
+                f"Auto-split: [cyan]{len(included)}[/cyan] included / "
+                f"[yellow]{len(excluded)}[/yellow] excluded. "
+                f"Manifest → [cyan]{split_path}[/cyan]"
+            )
+            include_doc_ids = included
+
         # 1. Sample chunks
         async with resources.session_factory() as session:
             sampled = await sample_chunks_stratified(
-                session, total_n=num_chunks, min_content_length=min_length
+                session,
+                total_n=num_chunks,
+                min_content_length=min_length,
+                include_doc_ids=include_doc_ids if include_doc_ids else None,
+                exclude_doc_ids=exclude_doc_ids if exclude_doc_ids else None,
             )
 
         if not sampled:

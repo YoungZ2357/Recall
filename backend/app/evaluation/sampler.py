@@ -27,25 +27,41 @@ async def sample_chunks_stratified(
     session: AsyncSession,
     total_n: int = 50,
     min_content_length: int = 100,
+    include_doc_ids: list[str] | None = None,
+    exclude_doc_ids: list[str] | None = None,
 ) -> list[SampledChunk]:
     """Sample chunks with proportional allocation across documents.
 
     Algorithm:
         1. Fetch all documents and their chunks.
-        2. Filter chunks by minimum content length.
-        3. Allocate per-document quota proportional to eligible chunk count.
-        4. Random sample within each document.
+        2. Apply include/exclude document filters.
+        3. Filter chunks by minimum content length.
+        4. Allocate per-document quota proportional to eligible chunk count.
+        5. Random sample within each document.
 
     Args:
         session: Async database session.
         total_n: Target number of chunks to sample.
         min_content_length: Minimum character length for eligible chunks.
+        include_doc_ids: Whitelist of document IDs. If set, only these documents
+            are used. Mutually exclusive with exclude_doc_ids.
+        exclude_doc_ids: Blacklist of document IDs. If set, these documents are
+            skipped. Mutually exclusive with include_doc_ids.
 
     Returns:
         List of sampled chunks, may be fewer than total_n if the database
         has insufficient eligible chunks.
     """
     documents = await DocumentRepository.list_all(session)
+
+    if include_doc_ids is not None:
+        include_set = set(include_doc_ids)
+        documents = [d for d in documents if str(d.document_id) in include_set]
+        logger.info("include_doc_ids filter applied: %d documents retained", len(documents))
+    elif exclude_doc_ids is not None:
+        exclude_set = set(exclude_doc_ids)
+        documents = [d for d in documents if str(d.document_id) not in exclude_set]
+        logger.info("exclude_doc_ids filter applied: %d documents retained", len(documents))
     if not documents:
         logger.warning("No documents in database, cannot sample chunks")
         return []

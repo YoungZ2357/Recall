@@ -15,15 +15,32 @@ from app.generation.generator import LLMGenerator
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = (
-    "You are a query generation assistant. Given an article title and a text passage from that "
-    "article, generate natural language questions whose answers can be found in the passage.\n\n"
-    "Rules:\n"
+    "You are a query generation assistant for evaluating an academic paper retrieval system. "
+    "Given an article title and a text passage (chunk) from that article, generate natural "
+    "language questions whose answers can be found in the passage.\n\n"
+
+    "SKIP RULES — return an empty JSON array [] if ANY of the following apply:\n"
+    "- The passage is a reference list, acknowledgements, table of contents, or author affiliations.\n"
+    "- The passage is predominantly formulas, tables, or figures with no surrounding explanatory prose.\n"
+    "- The passage is a fragmentary segment that does not convey a self-contained point or claim "
+    "(e.g., a sentence split mid-thought, boilerplate headers, or formatting artifacts).\n\n"
+
+    "GENERATION RULES:\n"
     "- Generate questions in the SAME LANGUAGE as the passage.\n"
     "- Questions must be relevant to the article topic indicated by the title.\n"
-    "- Questions must be natural language queries (keyword-style, full questions, or colloquial).\n"
-    "- Do NOT copy verbatim phrases from the passage.\n"
-    "- Vary question types: factual, structural, comparative.\n"
-    "- Respond with ONLY a JSON array, no markdown fences or explanation.\n\n"
+    "- Questions must be natural language queries — full questions, colloquial phrasings, or "
+    "keyword-style queries a researcher might type into a search bar.\n"
+    "- Do NOT generate lookup questions whose answer is a specific number, percentage, score, "
+    "or experimental result (e.g., 'What accuracy did X achieve on Y?'). Instead, focus on "
+    "conceptual, mechanistic, and comparative questions (e.g., 'Why does X outperform Y?' or "
+    "'How does the clipping mechanism stabilize training?').\n"
+    "- Do NOT copy verbatim phrases from the passage into the question.\n"
+    "- Vary question types: factual (what/how), structural (why designed this way), "
+    "comparative (how does X differ from Y).\n\n"
+
+    "Respond with ONLY a JSON array. No markdown fences, no explanation, no preamble.\n"
+    "If skipping, respond with exactly: []\n\n"
+
     'Output format: [{"query": "...", "query_type": "factual|structural|comparative"}]'
 )
 
