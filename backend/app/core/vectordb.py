@@ -392,6 +392,40 @@ class QdrantService:
         except Exception as e:
             raise VectorDBError(f"Failed to count points: {e}") from e
 
+    async def set_payload_for_points(
+        self,
+        payload: dict,
+        point_ids: list[str],
+    ) -> None:
+        """Overwrite specific payload fields for a list of points.
+
+        Does not touch payload fields not present in `payload`.
+        Empty list returns immediately.
+
+        Args:
+            payload: Fields to set (e.g. {"tags": ["ml", "rag"]})
+            point_ids: Point UUIDs to update
+
+        Raises:
+            VectorDBError: Qdrant operation failed
+        """
+        if not point_ids:
+            return
+        self._ensure_connected()
+        batch_size = 100
+        for i in range(0, len(point_ids), batch_size):
+            batch = point_ids[i : i + batch_size]
+            try:
+                await self.client.set_payload(
+                    collection_name=self.collection_name,
+                    payload=payload,
+                    points=batch,
+                )
+                logger.debug("Set payload for %d points", len(batch))
+            except Exception as e:
+                raise VectorDBError(f"Failed to set payload for batch {i // batch_size}: {e}") from e
+        logger.info("Set payload for total %d points", len(point_ids))
+
     async def scroll_ids(
             self,
             scroll_filter: Filter,

@@ -24,6 +24,7 @@ from app.cli.eval import eval_app
 from app.cli.generate import generate_app
 from app.cli.ingest import ingest_app
 from app.cli.reindex import reindex_app
+from app.cli.retag import retag_app
 from app.cli.search import search_app
 from app.config import settings
 
@@ -42,6 +43,7 @@ app = typer.Typer(
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(contextualize_app, name="contextualize")
 app.add_typer(reindex_app, name="reindex")
+app.add_typer(retag_app, name="retag")
 app.add_typer(search_app, name="search")
 app.add_typer(generate_app, name="generate")
 app.add_typer(eval_app, name="eval")

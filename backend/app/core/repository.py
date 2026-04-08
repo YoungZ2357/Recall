@@ -208,6 +208,38 @@ class ChunkRepository:
         return sorted(tag_set)
 
     @classmethod
+    async def get_untagged_document_ids(cls, session: AsyncSession) -> list[UUID]:
+        """Return document_ids where every chunk has no tags (tags = '[]' or NULL).
+
+        Uses GROUP BY + HAVING to find documents with zero tagged chunks.
+        """
+        result = await session.execute(
+            text(
+                "SELECT document_id FROM chunks "
+                "GROUP BY document_id "
+                "HAVING SUM(CASE WHEN tags IS NOT NULL AND tags != '[]' THEN 1 ELSE 0 END) = 0"
+            )
+        )
+        return [UUID(row[0]) for row in result.all()]
+
+    @classmethod
+    async def bulk_update_tags(
+        cls,
+        session: AsyncSession,
+        doc_id: UUID,
+        tags: list[str],
+    ) -> int:
+        """Update tags for all chunks of a document. Returns updated row count."""
+        tags_json = json.dumps(tags, ensure_ascii=False)
+        result = await session.execute(
+            update(Chunk)
+            .where(Chunk.document_id == doc_id)
+            .values(tags=tags_json)
+        )
+        await session.flush()
+        return result.rowcount
+
+    @classmethod
     async def list_by_document_without_context(
         cls, session: AsyncSession, doc_id: UUID
     ) -> list[Chunk]:
