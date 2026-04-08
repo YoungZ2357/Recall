@@ -188,7 +188,7 @@ async def process_query(
 
 async def main(input_path: Path, output_path: Path, concurrency: int) -> None:
     # api_key = os.environ.get("DEEPSEEK_API_KEY")
-    api_key = "sk-4242b2ca280142b28aa1c0adbde3b542"
+    api_key = ""
     if not api_key:
         logger.error("DEEPSEEK_API_KEY environment variable not set")
         sys.exit(1)
