@@ -7,7 +7,7 @@ Recall is a personal-use local knowledge base retrieval service. It emphasizes *
 - **P0 (Retrieval Core)**: ✅ Complete
 - **P1 (Query Transform + API Layer)**: 🔶 Partial (FastAPI initialized, /generate endpoint, missing documents/search API routes and query transformation)
 - **P2 (Refinement + Testing)**: 🔶 Partial (evaluation framework complete, missing deduplicator/compressor/summarizer)
-- **P3 (MCP + Frontend)**: ❌ Not started
+- **P3 (MCP + Frontend)**: 🔶 Partial (stdio MCP server with search/ingest/generate tools, frontend not started)
 
 ## Architecture
 
@@ -18,8 +18,9 @@ Ingestion:
   → Content-Filter → Embedder → Dual-write (SQLite + Qdrant)
 
 Retrieval Pipeline:
-  Query → Embed → VectorSearcher (Qdrant ANN)  ──┐
-                  BM25Searcher (SQLite FTS5)     ├─→ RRF Merge → Reranker → Return Top-K
+  Query → Embed → VectorSearcher (Qdrant ANN)         ──┐
+                  BM25Searcher (SQLite FTS5)            ├─→ RRF Merge → Reranker → Return Top-K
+                  ContextualBM25Searcher (FTS5+context) ──┘
   
 Reranker (Weighted Multi-Signal):
   final_score = α·retrieval_score + β·metadata_score + γ·retention_score
@@ -47,7 +48,7 @@ API Exposure (P1-5,6):
   └ POST /search (end-to-end retrieval)
 
 MCP + Frontend (P3):
-  ├ MCP server (stdio/SSE)
+  ├ MCP server SSE (stdio done)
   └ React frontend
 ```
 
@@ -62,7 +63,7 @@ MCP + Frontend (P3):
 | Parsers        | Text · PyMuPDF · Marker(CLI) · MinerU (API call)                  |
 | Evaluation     | MRR · nDCG · Recall@k · Synthetic query synthesis       |
 | Frontend       | React · TypeScript · Vite · Ant Design (planned)        |
-| MCP            | (planned)                                |
+| MCP            | Model Context Protocol · stdio server (partial)         |
 
 
 ## Key Features
@@ -98,6 +99,7 @@ MCP + Frontend (P3):
 - `reindex` — Re-embed entire corpus (model switch)
 - `annotate` — Create questions for all chunks in a document
 - `contextualize` — Generate context for existing chunks, which may help with embedding
+- `retag` — Re-tag documents with updated LLM-based tags
 
 
 
@@ -125,6 +127,7 @@ Recall/
 │   │   │   ├── docs.py             # ✅ docs (list/delete documents)
 │   │   │   ├── annotate.py         # ✅ annotate (chunk-level annotations for eval)
 │   │   │   ├── contextualize.py    # ✅ contextualize (context generation)
+│   │   │   ├── retag.py            # ✅ retag (re-tag documents with LLM)
 │   │   │   ├── eval.py             # ✅ eval (retrieval quality assessment)
 │   │   │   └── _init_deps.py       # Shared dependency wiring
 │   │   │
@@ -132,8 +135,10 @@ Recall/
 │   │   │   ├── pipeline.py         # ✅ Orchestration
 │   │   │   ├── parser.py           # ✅ Format dispatcher
 │   │   │   ├── parsers/
-│   │   │   │   ├── text.py         # ✅ Plain text
-│   │   │   │   └── pdf.py          # ✅ PyMuPDF, Marker, MinerU
+│   │   │   │   ├── text.py         # ✅ Plain text (.txt, .md)
+│   │   │   │   ├── pdf.py          # ✅ Marker CLI parser
+│   │   │   │   ├── pdf_pymupdf.py  # ✅ PyMuPDF parser
+│   │   │   │   └── pdf_mineru.py   # ✅ MinerU API parser
 │   │   │   ├── chunker.py          # ✅ RecursiveSplit, FixedCount
 │   │   │   ├── embedder.py         # ✅ APIEmbedder (GLM Embedding-3)
 │   │   │   ├── tagger.py           # ✅ Auto-tagger (LLM-based)
@@ -144,11 +149,16 @@ Recall/
 │   │   │   ├── pipeline.py         # ✅ Full orchestration + hydration
 │   │   │   ├── searcher.py         # ✅ VectorSearcher (Qdrant ANN)
 │   │   │   │                       # ✅ BM25Searcher (SQLite FTS5)
-│   │   │   │                       # ✅ RRF merge algorithm
+│   │   │   │                       # ✅ ContextualBM25Searcher (FTS5 on context)
 │   │   │   ├── reranker.py         # ✅ Weighted multi-signal scoring
 │   │   │   │                       # ✅ Tag-semantic scoring (metadata)
 │   │   │   │                       # ✅ Ebbinghaus retention (forgetting curve)
-│   │   │   ├── operators.py        # Base interfaces (extensible)
+│   │   │   ├── operators.py        # ✅ Base interfaces (extensible)
+│   │   │   ├── engine.py           # ✅ DAG execution engine
+│   │   │   ├── graph.py            # ✅ DAG topology builder
+│   │   │   ├── workflows.py        # ✅ Predefined topology factories
+│   │   │   ├── merger.py           # ✅ RRF merge algorithm
+│   │   │   ├── configs.py          # ✅ Searcher/reranker config classes
 │   │   │   └── query_transform.py  # ❌ Empty (RAG-Fusion, HyDE planned)
 │   │   │
 │   │   ├── evaluation/             # ✅ Evaluation framework
@@ -161,7 +171,9 @@ Recall/
 │   │   │   └── generator.py        # ✅ OpenAI-compatible async client
 │   │   │
 │   │   ├── refiner/                # ❌ Empty (dedup/compress/summarize planned)
-│   │   ├── mcp/                    # ❌ Empty (MCP server planned)
+│   │   ├── mcp/                    # 🔶 Partial (stdio MCP server)
+│   │   │   ├── server.py           # ✅ stdio server (search/ingest/generate tools)
+│   │   │   └── __main__.py         # ✅ Entry point
 │   │   │
 │   │   └── core/                   # ✅ Shared infrastructure
 │   │       ├── models.py           # ✅ ORM (Document, Chunk, ChunkAccess)
@@ -170,7 +182,8 @@ Recall/
 │   │       ├── vectordb.py         # ✅ Qdrant wrapper
 │   │       ├── repository.py       # ✅ Data access layer
 │   │       ├── chunk_manager.py    # ✅ SQLite ↔ Qdrant consistency
-│   │       └── exceptions.py       # Custom exception hierarchy
+│   │       ├── pipeline_deps.py    # ✅ PipelineDeps dataclass
+│   │       └── exceptions.py       # ✅ Custom exception hierarchy
 │   │
 │   ├── tests/                      # Minimal test coverage
 │   └── pyproject.toml
@@ -220,7 +233,7 @@ python -m app.cli ingest --pdf-parser pymupdf --contextualize --chunk-overlap 96
 
 python -m app.cli generate "Tell me about Modular RAG"  # Perform RAG
 
-python -m app.cli delete --all  # delete all doocument in SQLite and Qdrant
+python -m app.cli docs delete --all  # delete all documents in SQLite and Qdrant
 ```
 
 
