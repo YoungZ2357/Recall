@@ -188,3 +188,4 @@ local
 docs/images
 docs/instructions
 .claude/worktrees
+backend/scripts/*.json
