@@ -11,3 +11,6 @@
 ## Ingestion
 - [Anthropic博客](https://www.anthropic.com/news/contextual-retrieval) - Introducing Contextual Retrieval：嵌入时Chunk前缀生成，用于优化针对名词的查询检索
 
+## 资源
+- [RQ-RAG GitHub仓库](https://github.com/chanchimin/RQ-RAG) - 查询重写器SFT阶段数据集
+
