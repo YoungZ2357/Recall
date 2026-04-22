@@ -22,6 +22,19 @@ _SYSTEM_PROMPT = (
     "If no question is provided, summarize the content relating to the query."
 )
 
+_FREE_SYSTEM_PROMPT = (
+    "You are a helpful assistant. Structure every response in exactly three labeled sections:\n\n"
+    "**From Knowledge Base**\n"
+    "Summarize only what the provided context explicitly states. "
+    "Do not add inference or external knowledge here. "
+    "If no context was retrieved, write 'No relevant content found in the knowledge base.'\n\n"
+    "**Supplement**\n"
+    "Add relevant knowledge from your own training that complements or extends the context. "
+    "This section is clearly distinguished from the knowledge base content.\n\n"
+    "**Summary**\n"
+    "A brief integrated conclusion combining both sources."
+)
+
 
 class LLMGenerator:
     """Async LLM client for OpenAI-compatible chat completions API."""
@@ -50,9 +63,10 @@ class LLMGenerator:
         context: list[RetrievalResult],
         max_tokens: int | None = None,
         temperature: float | None = None,
+        gen_mode: str = "strict",
     ) -> GenerateResponse:
         """Non-streaming generation. Returns complete response."""
-        messages = self._build_messages(query, context)
+        messages = self._build_messages(query, context, gen_mode)
         payload = {
             "model": self._model,
             "messages": messages,
@@ -81,9 +95,10 @@ class LLMGenerator:
         context: list[RetrievalResult],
         max_tokens: int | None = None,
         temperature: float | None = None,
+        gen_mode: str = "strict",
     ) -> AsyncIterator[str]:
         """SSE streaming generation. Yields SSE-formatted strings."""
-        messages = self._build_messages(query, context)
+        messages = self._build_messages(query, context, gen_mode)
         payload = {
             "model": self._model,
             "messages": messages,
@@ -186,7 +201,7 @@ class LLMGenerator:
     # ------------------------------------------------------------------
 
     def _build_messages(
-        self, query: str, context: list[RetrievalResult],
+        self, query: str, context: list[RetrievalResult], gen_mode: str = "strict",
     ) -> list[dict[str, str]]:
         """Construct chat messages from context chunks and user query."""
         if context:
@@ -198,8 +213,9 @@ class LLMGenerator:
         else:
             user_content = query
 
+        system_prompt = _FREE_SYSTEM_PROMPT if gen_mode == "free" else _SYSTEM_PROMPT
         return [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
 

@@ -28,19 +28,24 @@ def generate(
         str,
         typer.Option("--mode", "-m", help="Retention mode: prefer_recent | awaken_forgotten"),
     ] = "prefer_recent",
+    gen_mode: Annotated[
+        str,
+        typer.Option("--gen-mode", "-g", help="Generation mode: strict | free"),
+    ] = "strict",
     stream: Annotated[
         bool,
         typer.Option("--stream", "-s", help="Stream the response token by token."),
     ] = False,
 ) -> None:
     """Retrieve relevant context then generate an answer using the configured LLM."""
-    asyncio.run(_run_generate(query, top_k, mode, stream))
+    asyncio.run(_run_generate(query, top_k, mode, gen_mode, stream))
 
 
 async def _run_generate(
     query: str,
     top_k: int,
     mode: str,
+    gen_mode: str,
     stream: bool,
 ) -> None:
     from app.config import settings
@@ -100,7 +105,7 @@ async def _run_generate(
         # Generate answer
         if stream:
             console.print(f"\n[bold]Answer[/bold] ([dim]{settings.llm_model}[/dim])\n")
-            async for chunk in generator.generate_stream(query, results):
+            async for chunk in generator.generate_stream(query, results, gen_mode=gen_mode):
                 if chunk.strip() == "data: [DONE]":
                     break
                 if chunk.startswith("data: "):
@@ -111,7 +116,7 @@ async def _run_generate(
                         pass
             print()  # trailing newline after stream
         else:
-            response = await generator.generate(query, results)
+            response = await generator.generate(query, results, gen_mode=gen_mode)
             console.print(
                 Panel(
                     response.answer,
