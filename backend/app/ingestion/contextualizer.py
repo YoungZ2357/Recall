@@ -12,6 +12,7 @@ Reference: https://www.anthropic.com/news/contextual-retrieval
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -73,18 +74,21 @@ class ContextGenerator:
         document_text: str,
         chunk_contents: list[str],
         chunk_callback: Callable[[int, int], None] | None = None,
+        max_concurrency: int = 8,
     ) -> list[str | None]:
         """Generate context for multiple chunks sharing the same document.
 
-        Calls LLM sequentially per chunk so that DeepSeek's prefix cache can
-        be constructed on the first request and hit from the second onward.
+        Sends chunk 0 sequentially first so DeepSeek's prefix cache is established,
+        then processes the remaining chunks in parallel (bounded by max_concurrency).
         A single chunk failure does not interrupt the batch; that chunk gets None.
 
         Args:
             document_text: Full document text (shared across all chunks).
             chunk_contents: List of chunk texts.
-            chunk_callback: Optional callable invoked after each chunk with
-                (completed, total). Useful for driving CLI progress indicators.
+            chunk_callback: Optional callable invoked after each chunk completes with
+                (completed, total). With parallel execution the call order is
+                non-deterministic, but the count always reaches total.
+            max_concurrency: Max parallel LLM requests for chunks 1..N-1.
 
         Returns:
             List of context strings (or None for failed chunks), same length
@@ -94,32 +98,56 @@ class ContextGenerator:
             return []
 
         total = len(chunk_contents)
-        results: list[str | None] = []
+        results: list[str | None] = [None] * total
         total_cache_hit = 0
         total_cache_miss = 0
 
-        for i, content in enumerate(chunk_contents):
-            messages = _build_messages(document_text, content)
-            try:
-                result, usage = await self._generator.raw_chat_with_usage(
-                    messages=messages,
-                    temperature=0.0,
-                )
-                results.append(result.strip() if result and result.strip() else None)
-                total_cache_hit += usage.get("prompt_cache_hit_tokens", 0)
-                total_cache_miss += usage.get("prompt_cache_miss_tokens", 0)
-            except Exception as exc:
-                logger.warning(
-                    "Context generation failed for chunk %d/%d: %s", i + 1, total, exc
-                )
-                results.append(None)
+        # Phase 1: warm-up with chunk 0 to establish the DeepSeek prefix cache.
+        messages = _build_messages(document_text, chunk_contents[0])
+        try:
+            result, usage = await self._generator.raw_chat_with_usage(
+                messages=messages,
+                temperature=0.0,
+            )
+            results[0] = result.strip() if result and result.strip() else None
+            total_cache_hit += usage.get("prompt_cache_hit_tokens", 0)
+            total_cache_miss += usage.get("prompt_cache_miss_tokens", 0)
+        except Exception as exc:
+            logger.warning("Context generation failed for chunk 1/%d: %s", total, exc)
 
+        completed = 1
+        if chunk_callback is not None:
+            chunk_callback(1, total)
+
+        if total == 1:
+            return results
+
+        # Phase 2: remaining chunks in parallel; prefix cache is now warm.
+        sem = asyncio.Semaphore(max_concurrency)
+
+        async def _process(idx: int) -> None:
+            nonlocal completed, total_cache_hit, total_cache_miss
+            async with sem:
+                msgs = _build_messages(document_text, chunk_contents[idx])
+                try:
+                    r, u = await self._generator.raw_chat_with_usage(
+                        messages=msgs,
+                        temperature=0.0,
+                    )
+                    results[idx] = r.strip() if r and r.strip() else None
+                    total_cache_hit += u.get("prompt_cache_hit_tokens", 0)
+                    total_cache_miss += u.get("prompt_cache_miss_tokens", 0)
+                except Exception as exc:
+                    logger.warning(
+                        "Context generation failed for chunk %d/%d: %s", idx + 1, total, exc
+                    )
+            completed += 1
             if chunk_callback is not None:
-                chunk_callback(i + 1, total)
+                chunk_callback(completed, total)
 
-        if total > 1:
-            _log_cache_stats(total, total_cache_hit, total_cache_miss)
+        await asyncio.gather(*[_process(i) for i in range(1, total)])
 
+        _log_cache_stats(total, total_cache_hit, total_cache_miss)
         return results
 
 
