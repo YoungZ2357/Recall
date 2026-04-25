@@ -189,3 +189,6 @@ docs/images
 docs/instructions
 .claude/worktrees
 backend/scripts/*.json
+docs/PRD.md
+backend/nul
+docs/validate_dag.md
