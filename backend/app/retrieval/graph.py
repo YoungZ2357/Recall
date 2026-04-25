@@ -106,6 +106,10 @@ class GraphBuilder:
     def __init__(self) -> None:
         self._spec = GraphSpec()
 
+    @property
+    def spec(self) -> GraphSpec:
+        return self._spec
+
     def add_node(
         self,
         node_id: str,

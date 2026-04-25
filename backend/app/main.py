@@ -25,6 +25,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.embedder = embedder
     app.state.generator = generator
 
+    # Seed builtin topology configs
+    async with session_factory() as session:
+        from sqlalchemy import select
+
+        from app.core.models import TopologyConfig
+        from app.retrieval.workflows import builtin_topology_seeds
+
+        seeds = builtin_topology_seeds()
+        for seed in seeds:
+            result = await session.execute(
+                select(TopologyConfig).where(TopologyConfig.name == seed["name"])
+            )
+            if result.scalar_one_or_none() is None:
+                session.add(TopologyConfig(**seed))
+        await session.commit()
+    logger.info("Topology seeds ensured")
+
     yield
 
     logger.info("Shutting down Recall API server")
