@@ -25,6 +25,7 @@ _SYSTEM_PROMPT = (
     "You are a document tagging assistant. "
     "Analyze the document and return a JSON array of short, lowercase tag strings. "
     "Tags should capture the main topics, domains, and key concepts. "
+    "Return at most 10 tags, prioritizing the most distinctive ones. "
     "Output only the JSON array — no explanation, no markdown fences."
 )
 
@@ -81,7 +82,7 @@ def _build_user_message(content: str, existing_tags: list[str]) -> str:
             f"{json.dumps(existing_tags, ensure_ascii=False)}"
         )
     parts.append(
-        "\nReturn a JSON array of tags for this document. "
+        "\nReturn a JSON array of at most 10 tags for this document. "
         "Example: [\"machine learning\", \"python\", \"tutorial\"]"
     )
     return "\n".join(parts)

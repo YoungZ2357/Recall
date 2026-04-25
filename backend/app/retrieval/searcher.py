@@ -73,10 +73,11 @@ def normalize_scores(hits: list[SearchHit]) -> list[SearchHit]:
 def reciprocal_rank_fusion(
     hit_lists: list[list[SearchHit]],
     k: int = 60,
+    weights: list[float] | None = None,
 ) -> list[SearchHit]:
     """Merge multiple ranked SearchHit lists using Reciprocal Rank Fusion.
 
-    RRF score for a document = sum of 1/(k + rank_i) across all lists where
+    RRF score for a document = sum of w_i/(k + rank_i) across all lists where
     the document appears. Scores are then min-max normalized to [0, 1].
 
     Acts as both MergeDetector and RRF in the DAG abstraction:
@@ -90,6 +91,7 @@ def reciprocal_rank_fusion(
     Args:
         hit_lists: Ranked hit lists from different retrieval paths.
         k: RRF smoothing constant (default 60).
+        weights: Per-list multipliers aligned to hit_lists by index. None = equal weight (1.0).
 
     Returns:
         Fused list of SearchHit sorted by descending normalized RRF score,
@@ -100,11 +102,17 @@ def reciprocal_rank_fusion(
     if len(hit_lists) == 1:
         return hit_lists[0]
 
+    if weights is not None and len(weights) != len(hit_lists):
+        raise ValueError(
+            f"weights length {len(weights)} != hit_lists length {len(hit_lists)}"
+        )
+
     rrf_scores: dict[str, float] = {}
-    for hits in hit_lists:
+    for i, hits in enumerate(hit_lists):
+        w = weights[i] if weights is not None else 1.0
         sorted_hits = sorted(hits, key=lambda h: h.score, reverse=True)
         for rank, hit in enumerate(sorted_hits, start=1):
-            rrf_scores[hit.chunk_id] = rrf_scores.get(hit.chunk_id, 0.0) + 1.0 / (k + rank)
+            rrf_scores[hit.chunk_id] = rrf_scores.get(hit.chunk_id, 0.0) + w / (k + rank)
 
     if not rrf_scores:
         return []

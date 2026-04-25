@@ -59,7 +59,7 @@ def get_retrieval_pipeline(
         session_factory=session_factory,
     )
     return RetrievalPipeline(
-        dag=workflows.hybrid(deps),
+        dag=workflows.build_from_settings(deps),
         embedder=deps.embedder,
         session_factory=deps.session_factory,
     )

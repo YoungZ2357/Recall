@@ -18,4 +18,5 @@ class RRFMerger(BaseMerger):
     async def merge(
         self, hits_list: list[list[SearchHit]], context: PipelineContext
     ) -> list[SearchHit]:
-        return reciprocal_rank_fusion(hits_list, k=self.config.k)
+        weights = list(self.config.weights) if self.config.weights is not None else None
+        return reciprocal_rank_fusion(hits_list, k=self.config.k, weights=weights)

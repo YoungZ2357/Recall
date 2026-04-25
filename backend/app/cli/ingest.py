@@ -29,7 +29,7 @@ def ingest(
     pdf_parser: Annotated[
         str,
         typer.Option("--pdf-parser", help="PDF parser: pymupdf | marker | mineru"),
-    ] = "pymupdf",
+    ] = "mineru",
     strategy: Annotated[
         str,
         typer.Option("--strategy", "-s", help="Chunk strategy: recursive | fixed_count"),
@@ -37,31 +37,31 @@ def ingest(
     chunk_size: Annotated[
         int,
         typer.Option("--chunk-size", help="Target chunk size in characters (recursive only)."),
-    ] = 512,
+    ] = 768,
     chunk_overlap: Annotated[
         int,
         typer.Option("--chunk-overlap", help="Overlap between consecutive chunks (recursive only)."),
-    ] = 64,
+    ] = 96,
     contextualize: Annotated[
         bool,
-        typer.Option("--contextualize", help="Generate document-level context per chunk via LLM before embedding."),
-    ] = False,
+        typer.Option("--contextualize/--no-contextualize", help="Generate document-level context per chunk via LLM before embedding."),
+    ] = True,
     strip_tail: Annotated[
         bool,
         typer.Option("--strip-tail", help="Strip trailing references and appendix sections before chunking."),
     ] = False,
     strip_markdown: Annotated[
         bool,
-        typer.Option("--strip-markdown", help="Remove reference/appendix sections by Markdown heading structure (surgical multi-range removal). Takes priority over --strip-tail when both are set."),
-    ] = False,
+        typer.Option("--strip-markdown/--no-strip-markdown", help="Remove reference/appendix sections by Markdown heading structure (surgical multi-range removal). Takes priority over --strip-tail when both are set."),
+    ] = True,
     yes: Annotated[
         bool,
         typer.Option("--yes", "-y", help="Skip confirmation prompts."),
     ] = False,
     concurrency: Annotated[
         int,
-        typer.Option("--concurrency", "-c", help="Number of documents to ingest concurrently (batch mode only). Default 1 = sequential."),
-    ] = 1,
+        typer.Option("--concurrency", "-c", help="Number of documents to ingest concurrently (batch mode only)."),
+    ] = 4,
 ) -> None:
     """Ingest a single file or all supported files in a directory."""
     asyncio.run(_run_ingest(path, pdf_parser, strategy, chunk_size, chunk_overlap, contextualize, strip_tail, strip_markdown, yes, concurrency))

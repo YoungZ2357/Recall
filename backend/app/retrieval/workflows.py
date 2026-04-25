@@ -50,14 +50,12 @@ def _bm25_config_from_settings() -> BM25SearcherConfig:
 
 def _rrf_config_from_settings() -> RRFMergerConfig:
     return RRFMergerConfig(k=_settings.rrf_k)
+
+
 def _contextual_bm25_config_from_settings() -> ContextualBM25SearcherConfig:
     return ContextualBM25SearcherConfig(
         score_threshold=_settings.vector_score_threshold,
     )
-
-
-def _rrf_config_from_settings() -> RRFMergerConfig:
-    return RRFMergerConfig(k=_settings.rrf_k)
 
 
 
@@ -136,3 +134,48 @@ def hybrid_contextual_bm25(
         ])
         .build(deps)
     )
+
+
+def full_hybrid(
+    deps: PipelineDeps,
+    vector_config: VectorSearcherConfig | None = None,
+    bm25_config: BM25SearcherConfig | None = None,
+    c_bm25_config: ContextualBM25SearcherConfig | None = None,
+    rrf_config: RRFMergerConfig | None = None,
+    reranker_config: RerankerConfig | None = None,
+) -> RetrievalPipeline:
+    """Triple-retriever hybrid: VectorSearcher + BM25 + ContextualBM25 → RRF → Reranker.
+
+    hits_list index for RRFMergerConfig.weights alignment:
+        0 → VectorSearcher
+        1 → BM25Searcher
+        2 → ContextualBM25Searcher
+    """
+    return (
+        GraphBuilder()
+        .add_node("vec",    VectorSearcher,         vector_config   or _vector_config_from_settings())
+        .add_node("bm25",   BM25Searcher,           bm25_config     or _bm25_config_from_settings())
+        .add_node("c_bm25", ContextualBM25Searcher, c_bm25_config   or _contextual_bm25_config_from_settings())
+        .add_node("merge",  RRFMerger,              rrf_config      or _rrf_config_from_settings())
+        .add_node("rerank", Reranker,               reranker_config or _reranker_config_from_settings())
+        .add_edges([
+            ("vec",    "merge"),
+            ("bm25",   "merge"),
+            ("c_bm25", "merge"),
+            ("merge",  "rerank"),
+        ])
+        .build(deps)
+    )
+
+
+def build_from_settings(deps: PipelineDeps) -> RetrievalPipeline:
+    """Build a RetrievalPipeline using the topology specified in Settings.topology_mode."""
+    match _settings.topology_mode:
+        case "linear":
+            return linear(deps)
+        case "hybrid":
+            return hybrid(deps)
+        case "hybrid_contextual_bm25":
+            return hybrid_contextual_bm25(deps)
+        case "full_hybrid":
+            return full_hybrid(deps)
