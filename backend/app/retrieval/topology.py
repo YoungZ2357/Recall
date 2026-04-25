@@ -8,13 +8,20 @@ plus converters that map between user-facing JSON and internal GraphSpec.
 
 from __future__ import annotations
 
-from typing import Self
+import logging
+from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, model_validator
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.retrieval.graph import GraphSpec, NodeSpec
 from app.retrieval.operators import NodeType
 from app.retrieval.registry import NodeTypeInfo
+
+if TYPE_CHECKING:
+    pass
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -181,6 +188,41 @@ def _reconstruct_user_edges(spec: GraphSpec) -> list[EdgeJSON]:
                 )
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Topology resolution helpers (T5)
+# ---------------------------------------------------------------------------
+
+
+async def load_topology_by_name(name: str, session: AsyncSession) -> TopologySpecJSON:
+    from sqlalchemy import select
+
+    from app.core.models import TopologyConfig
+
+    result = await session.execute(
+        select(TopologyConfig).where(TopologyConfig.name == name)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise RuntimeError(f"Default topology '{name}' not found in database")
+    return TopologySpecJSON.model_validate_json(row.spec_json)
+
+
+async def resolve_topology(
+    spec: TopologySpecJSON | None,
+    default_name: str,
+    session: AsyncSession,
+) -> GraphSpec:
+    from app.retrieval.registry import list_node_types
+
+    registry = {info.node_type: info for info in list_node_types()}
+
+    if spec is not None:
+        return spec.to_graph_spec(registry)
+
+    topo_json = await load_topology_by_name(default_name, session)
+    return topo_json.to_graph_spec(registry)
 
 
 # ---------------------------------------------------------------------------

@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     topology_mode: Literal["linear", "hybrid", "hybrid_contextual_bm25", "full_hybrid"] = Field(
         default="hybrid", alias="TOPOLOGY_MODE"
     )
+    default_topology: str = Field(default="hybrid", alias="DEFAULT_TOPOLOGY")
 
     # CORS
     cors_origins: list[str] = Field(

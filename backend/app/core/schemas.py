@@ -3,6 +3,8 @@ from uuid import UUID as PyUUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.retrieval.topology import TopologySpecJSON
+
 
 class DocumentCreate(BaseModel):
     title: str | None = None
@@ -59,6 +61,7 @@ class GenerateRequest(BaseModel):
     top_k: int = 5
     mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent"
     stream: bool = False
+    topology: TopologySpecJSON | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -125,6 +128,7 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int = Field(default=10, ge=1, le=50)
     mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent"
+    topology: TopologySpecJSON | None = None
 
 
 class ScoreDetail(BaseModel):

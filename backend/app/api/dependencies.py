@@ -65,6 +65,18 @@ def get_retrieval_pipeline(
     )
 
 
+def get_pipeline_deps(
+    qdrant: Annotated[QdrantService, Depends(get_qdrant)],
+    embedder: Annotated[APIEmbedder, Depends(get_embedder)],
+    session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
+) -> PipelineDeps:
+    return PipelineDeps(
+        embedder=embedder,
+        qdrant_client=qdrant,
+        session_factory=session_factory,
+    )
+
+
 def get_ingestion_pipeline(
     qdrant: Annotated[QdrantService, Depends(get_qdrant)],
     embedder: Annotated[APIEmbedder, Depends(get_embedder)],
@@ -88,3 +100,4 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 RetrievalPipelineDep = Annotated[RetrievalPipeline, Depends(get_retrieval_pipeline)]
 IngestionPipelineDep = Annotated[IngestionPipeline, Depends(get_ingestion_pipeline)]
 GeneratorDep = Annotated[LLMGenerator, Depends(get_generator)]
+PipelineDepsDep = Annotated[PipelineDeps, Depends(get_pipeline_deps)]
