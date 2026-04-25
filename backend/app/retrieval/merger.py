@@ -3,7 +3,7 @@
 from app.core.pipeline_deps import PipelineDeps
 from app.retrieval.configs import RRFMergerConfig
 from app.retrieval.operators import BaseMerger, PipelineContext, SearchHit
-from app.retrieval.searcher import reciprocal_rank_fusion
+from app.retrieval.scoring import reciprocal_rank_fusion
 
 
 class RRFMerger(BaseMerger):

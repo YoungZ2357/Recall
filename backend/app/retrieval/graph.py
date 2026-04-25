@@ -23,7 +23,7 @@ from app.retrieval.operators import (
     NodeType,
     SearchHit,
 )
-from app.retrieval.searcher import normalize_scores
+from app.retrieval.scoring import normalize_scores
 
 if TYPE_CHECKING:
     from app.core.pipeline_deps import PipelineDeps

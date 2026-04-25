@@ -192,3 +192,5 @@ backend/scripts/*.json
 docs/PRD.md
 backend/nul
 docs/validate_dag.md
+--no-banner
+pausedmission.md
