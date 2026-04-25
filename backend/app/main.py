@@ -47,7 +47,11 @@ def create_app() -> FastAPI:
     async def recall_error_handler(request: Request, exc: RecallError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.message, "code": exc.status_code},
+            content={
+                "error": exc.__class__.__name__,
+                "message": exc.message,
+                "status_code": exc.status_code,
+            },
         )
 
     app.include_router(router)
