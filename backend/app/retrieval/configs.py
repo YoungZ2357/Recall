@@ -39,4 +39,5 @@ class RerankerConfig(BaseModel, frozen=True):
 
 class RRFMergerConfig(BaseModel, frozen=True):
     k: int = 60
-    weights: tuple[float, ...] | None = None  # None = equal weight; index aligns to add_edges() order
+    # None = equal weight; index aligns to add_edges() order
+    weights: tuple[float, ...] | None = None

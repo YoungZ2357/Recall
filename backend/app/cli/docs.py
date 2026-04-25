@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Annotated, Optional
+from typing import Annotated
 from uuid import UUID
 
 import typer
@@ -28,11 +28,11 @@ def list_docs() -> None:
 @docs_app.command("delete")
 def delete_docs(
     doc_id: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--doc-id", help="Delete a specific document by UUID."),
     ] = None,
     title: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--title", help="Delete a document by exact title match."),
     ] = None,
     delete_all: Annotated[
@@ -102,8 +102,8 @@ async def _run_list() -> None:
 
 
 async def _run_delete(
-    doc_id: Optional[str],
-    title: Optional[str],
+    doc_id: str | None,
+    title: str | None,
     delete_all: bool,
     yes: bool,
 ) -> None:

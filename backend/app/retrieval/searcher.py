@@ -7,7 +7,11 @@ from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 from app.core.exceptions import EmbeddingError, RetrievalError, VectorDBError
 from app.core.pipeline_deps import PipelineDeps
 from app.core.repository import FTSRepository
-from app.retrieval.configs import BM25SearcherConfig, ContextualBM25SearcherConfig, VectorSearcherConfig
+from app.retrieval.configs import (
+    BM25SearcherConfig,
+    ContextualBM25SearcherConfig,
+    VectorSearcherConfig,
+)
 from app.retrieval.operators import BaseRetriever, PipelineContext, SearchHit
 
 logger = logging.getLogger(__name__)

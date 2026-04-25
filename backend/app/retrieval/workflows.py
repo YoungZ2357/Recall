@@ -11,17 +11,16 @@ from app.config import settings as _settings
 from app.core.pipeline_deps import PipelineDeps
 from app.retrieval.configs import (
     BM25SearcherConfig,
+    ContextualBM25SearcherConfig,
     RerankerConfig,
     RRFMergerConfig,
     VectorSearcherConfig,
-    ContextualBM25SearcherConfig,
 )
 from app.retrieval.engine import RetrievalPipeline
 from app.retrieval.graph import GraphBuilder
 from app.retrieval.merger import RRFMerger
 from app.retrieval.reranker import Reranker
-from app.retrieval.searcher import BM25Searcher, VectorSearcher, ContextualBM25Searcher
-
+from app.retrieval.searcher import BM25Searcher, ContextualBM25Searcher, VectorSearcher
 
 
 def _reranker_config_from_settings() -> RerankerConfig:
@@ -124,7 +123,11 @@ def hybrid_contextual_bm25(
     return (
         GraphBuilder()
         .add_node("vector", VectorSearcher, vector_config or _vector_config_from_settings())
-        .add_node("c_bm25", ContextualBM25Searcher, c_bm25_config or _contextual_bm25_config_from_settings())
+        .add_node(
+            "c_bm25",
+            ContextualBM25Searcher,
+            c_bm25_config or _contextual_bm25_config_from_settings(),
+        )
         .add_node("merge", RRFMerger, rrf_config or _rrf_config_from_settings())
         .add_node("rerank", Reranker, reranker_config or _reranker_config_from_settings())
         .add_edges([
@@ -153,11 +156,19 @@ def full_hybrid(
     """
     return (
         GraphBuilder()
-        .add_node("vec",    VectorSearcher,         vector_config   or _vector_config_from_settings())
-        .add_node("bm25",   BM25Searcher,           bm25_config     or _bm25_config_from_settings())
-        .add_node("c_bm25", ContextualBM25Searcher, c_bm25_config   or _contextual_bm25_config_from_settings())
-        .add_node("merge",  RRFMerger,              rrf_config      or _rrf_config_from_settings())
-        .add_node("rerank", Reranker,               reranker_config or _reranker_config_from_settings())
+        .add_node("vec", VectorSearcher, vector_config or _vector_config_from_settings())
+        .add_node("bm25", BM25Searcher, bm25_config or _bm25_config_from_settings())
+        .add_node(
+            "c_bm25",
+            ContextualBM25Searcher,
+            c_bm25_config or _contextual_bm25_config_from_settings(),
+        )
+        .add_node("merge", RRFMerger, rrf_config or _rrf_config_from_settings())
+        .add_node(
+            "rerank",
+            Reranker,
+            reranker_config or _reranker_config_from_settings(),
+        )
         .add_edges([
             ("vec",    "merge"),
             ("bm25",   "merge"),

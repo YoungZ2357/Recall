@@ -1,14 +1,26 @@
 from datetime import UTC, datetime
+from enum import StrEnum
 from uuid import UUID as PyUUID
-from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
 from .database import Base
 
-class SyncStatus(str, Enum):
+
+class SyncStatus(StrEnum):
     PENDING = "pending"
     SYNCED = "synced"
     DIRTY = "dirty"

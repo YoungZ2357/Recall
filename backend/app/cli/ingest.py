@@ -40,19 +40,19 @@ def ingest(
     ] = 768,
     chunk_overlap: Annotated[
         int,
-        typer.Option("--chunk-overlap", help="Overlap between consecutive chunks (recursive only)."),
+        typer.Option("--chunk-overlap", help="Overlap between consecutive chunks (recursive only)."),  # noqa: E501
     ] = 96,
     contextualize: Annotated[
         bool,
-        typer.Option("--contextualize/--no-contextualize", help="Generate document-level context per chunk via LLM before embedding."),
+        typer.Option("--contextualize/--no-contextualize", help="Generate document-level context per chunk via LLM before embedding."),  # noqa: E501
     ] = True,
     strip_tail: Annotated[
         bool,
-        typer.Option("--strip-tail", help="Strip trailing references and appendix sections before chunking."),
+        typer.Option("--strip-tail", help="Strip trailing references and appendix sections before chunking."),  # noqa: E501
     ] = False,
     strip_markdown: Annotated[
         bool,
-        typer.Option("--strip-markdown/--no-strip-markdown", help="Remove reference/appendix sections by Markdown heading structure (surgical multi-range removal). Takes priority over --strip-tail when both are set."),
+        typer.Option("--strip-markdown/--no-strip-markdown", help="Remove reference/appendix sections by Markdown heading structure (surgical multi-range removal). Takes priority over --strip-tail when both are set."),  # noqa: E501
     ] = True,
     yes: Annotated[
         bool,
@@ -60,11 +60,14 @@ def ingest(
     ] = False,
     concurrency: Annotated[
         int,
-        typer.Option("--concurrency", "-c", help="Number of documents to ingest concurrently (batch mode only)."),
+        typer.Option("--concurrency", "-c", help="Number of documents to ingest concurrently (batch mode only)."),  # noqa: E501
     ] = 4,
 ) -> None:
     """Ingest a single file or all supported files in a directory."""
-    asyncio.run(_run_ingest(path, pdf_parser, strategy, chunk_size, chunk_overlap, contextualize, strip_tail, strip_markdown, yes, concurrency))
+    asyncio.run(_run_ingest(
+        path, pdf_parser, strategy, chunk_size, chunk_overlap,
+        contextualize, strip_tail, strip_markdown, yes, concurrency,
+    ))
 
 
 async def _run_ingest(
@@ -113,7 +116,11 @@ async def _run_ingest(
         elif pdf_parser == "mineru":
             from app.ingestion.parsers.pdf_mineru import MinerUParser
             def parser_factory(p: Path) -> BaseParser:
-                return MinerUParser(api_key=settings.mineru_api_key) if p.suffix.lower() == ".pdf" else get_parser(p)
+                return (
+                    MinerUParser(api_key=settings.mineru_api_key)
+                    if p.suffix.lower() == ".pdf"
+                    else get_parser(p)
+                )
         else:
             parser_factory = get_parser
 
@@ -135,14 +142,17 @@ async def _run_ingest(
         )
 
         filtering_active = strip_markdown or strip_tail
-        if path.is_file():
+        if await asyncio.to_thread(lambda: path.is_file()):  # noqa: ASYNC240
             await _ingest_single(pipeline, path, contextualizer, filtering_active)
 
-        elif path.is_dir():
+        elif await asyncio.to_thread(lambda: path.is_dir()):  # noqa: ASYNC240
             supported_exts = set(_parser_registry.keys())
             files = [
-                f for f in sorted(path.rglob("*"))
-                if f.is_file() and f.suffix.lower() in supported_exts
+                f for f in sorted(path.rglob("*"))  # noqa: ASYNC240
+                if (
+                    await asyncio.to_thread(lambda: f.is_file())  # noqa: ASYNC240, B023
+                    and f.suffix.lower() in supported_exts
+                )
             ]
 
             if not files:
@@ -194,7 +204,9 @@ async def _ingest_single(
             progress.console.print(f"  [dim]→ {n} chunks{eta}[/dim]")
 
         try:
-            doc = await pipeline.ingest(path, stage_callback=on_stage, on_chunk_count=on_chunk_count)
+            doc = await pipeline.ingest(
+                path, stage_callback=on_stage, on_chunk_count=on_chunk_count,
+            )
         except Exception as exc:
             console.print(f"[red]✗[/red] {path.name}: {exc}")
             raise typer.Exit(1) from exc
@@ -238,14 +250,14 @@ async def _ingest_batch(
             for path in files:
                 stage_num = [0]
 
-                def make_on_stage(captured: Path) -> object:
+                def make_on_stage(captured: Path, counter: list[int]) -> object:
                     def on_stage(name: str) -> None:
-                        stage_num[0] += 1
+                        counter[0] += 1
                         progress.update(
                             overall,
                             description=(
                                 f"[dim]{captured.name}[/dim] "
-                                f"[{stage_num[0]}/{total_stages}] {name}..."
+                                f"[{counter[0]}/{total_stages}] {name}..."
                             ),
                         )
                     return on_stage
@@ -260,13 +272,13 @@ async def _ingest_batch(
                 try:
                     doc = await pipeline.ingest(
                         path,
-                        stage_callback=make_on_stage(path),
+                        stage_callback=make_on_stage(path, stage_num),
                         on_chunk_count=make_on_chunk_count(path),
                     )
                     elapsed = time.monotonic() - t0
                     filter_suffix = _filter_suffix(pipeline, filtering_active)
                     succeeded.append(doc)
-                    progress.console.print(f"  [green]✓[/green] {path.name}  ({elapsed:.1f}s){filter_suffix}")
+                    progress.console.print(f"  [green]✓[/green] {path.name}  ({elapsed:.1f}s){filter_suffix}")  # noqa: E501
                 except Exception as exc:
                     elapsed = time.monotonic() - t0
                     logger.warning("Failed to ingest %s: %s", path, exc)
@@ -328,7 +340,10 @@ async def _ingest_batch(
                     finally:
                         progress.update(file_task, visible=False)
                         progress.advance(overall)
-                        progress.update(overall, description=f"Ingesting [dim]{files[0].parent}[/dim]")
+                        progress.update(
+                            overall,
+                            description=f"Ingesting [dim]{files[0].parent}[/dim]",
+                        )
 
             await asyncio.gather(*[process_file(p) for p in files])
 

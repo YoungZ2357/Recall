@@ -13,15 +13,15 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Literal, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 if TYPE_CHECKING:
     from app.ingestion.embedder import BaseEmbedder
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -29,11 +29,11 @@ from app.core.exceptions import (
     ChunkIDMismatchError,
     ChunkNotFoundError,
     DocumentNotFoundError,
-    InvalidSyncStatusTransitionError,
     HealthCheckError,
+    InvalidSyncStatusTransitionError,
     SyncError,
 )
-from app.core.models import Document, Chunk, SyncStatus
+from app.core.models import Chunk, Document, SyncStatus
 from app.core.repository import ChunkRepository, DocumentRepository, FTSRepository
 from app.core.schemas import ChunkCreate, ChunkIngest
 from app.core.vectordb import QdrantService
@@ -111,7 +111,7 @@ class ChunkManager:
     def _validate_transition(
         from_status: SyncStatus,
         to_status: SyncStatus,
-        doc_id: Optional[str] = None,
+        doc_id: str | None = None,
     ) -> None:
         """Validate state transition according to sync_mecanism.md rules.
 
@@ -202,7 +202,10 @@ class ChunkManager:
         if doc.sync_status not in (SyncStatus.PENDING, SyncStatus.DIRTY):
             raise SyncError(
                 doc_id=doc_id,
-                detail=f"write_chunks requires PENDING or DIRTY status, got {doc.sync_status.value}",
+                detail=(
+                    f"write_chunks requires PENDING or DIRTY status, "
+                    f"got {doc.sync_status.value}"
+                ),
             )
 
         # Defensive assertion: context_embedded=True requires context to be non-None
@@ -228,7 +231,7 @@ class ChunkManager:
         orm_chunks = await ChunkRepository.bulk_create(session, chunk_creates)
 
         # Write tags and context onto each ORM chunk
-        for orm_chunk, chunk in zip(orm_chunks, chunks):
+        for orm_chunk, chunk in zip(orm_chunks, chunks, strict=False):
             if chunk.tags:
                 orm_chunk.tags = json.dumps(chunk.tags, ensure_ascii=False)
             orm_chunk.context = chunk.context
@@ -239,7 +242,7 @@ class ChunkManager:
 
         # Build Qdrant points — use current time for created_at to avoid
         # async lazy-load of server_default attribute after flush
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         points = [
             PointStruct(
                 id=str(orm_chunk.chunk_id),
@@ -251,7 +254,7 @@ class ChunkManager:
                     "created_at": now_iso,
                 },
             )
-            for orm_chunk, chunk in zip(orm_chunks, chunks)
+            for orm_chunk, chunk in zip(orm_chunks, chunks, strict=False)
         ]
 
         # Upsert to Qdrant; on failure mark document as FAILED
@@ -266,7 +269,7 @@ class ChunkManager:
             ) from e
 
         # Set context_embedded based on the explicit signal from pipeline
-        for orm_chunk, chunk in zip(orm_chunks, chunks):
+        for orm_chunk, chunk in zip(orm_chunks, chunks, strict=False):
             orm_chunk.context_embedded = chunk.context_embedded
 
         chunk_ids = [c.chunk_id for c in orm_chunks]
@@ -632,7 +635,7 @@ class ChunkManager:
                     for d in batch
                 ]
                 vectors = await embedder.embed_batch(embed_texts)
-                now_iso = datetime.now(timezone.utc).isoformat()
+                now_iso = datetime.now(UTC).isoformat()
                 points = [
                     PointStruct(
                         id=str(d["chunk_id"]),
@@ -644,7 +647,7 @@ class ChunkManager:
                             "created_at": now_iso,
                         },
                     )
-                    for d, vector in zip(batch, vectors)
+                    for d, vector in zip(batch, vectors, strict=False)
                 ]
                 await qdrant_service.upsert(points)
 
@@ -654,7 +657,9 @@ class ChunkManager:
                     if chunk is not None:
                         chunk.context_embedded = d["context"] is not None
 
-                await ChunkRepository.bulk_update_status(session, batch_chunk_ids, SyncStatus.SYNCED)
+                await ChunkRepository.bulk_update_status(
+                    session, batch_chunk_ids, SyncStatus.SYNCED
+                )
                 await session.commit()
                 succeeded += len(batch)
                 if chunk_callback is not None:
@@ -664,7 +669,9 @@ class ChunkManager:
                     f"Batch reindex failed for document {doc_id}, "
                     f"batch offset {i}: {e}"
                 )
-                await ChunkRepository.bulk_update_status(session, batch_chunk_ids, SyncStatus.FAILED)
+                await ChunkRepository.bulk_update_status(
+                    session, batch_chunk_ids, SyncStatus.FAILED
+                )
                 await session.commit()
                 failed_chunk_ids.extend(str(cid) for cid in batch_chunk_ids)
                 errors.append(str(e))

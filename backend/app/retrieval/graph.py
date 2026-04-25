@@ -21,7 +21,6 @@ from app.retrieval.operators import (
     BaseReranker,
     BaseRetriever,
     NodeType,
-    PipelineContext,
     SearchHit,
 )
 from app.retrieval.searcher import normalize_scores

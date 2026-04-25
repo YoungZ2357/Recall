@@ -7,7 +7,8 @@ from typing import NamedTuple
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.config import Settings, settings as _default_settings
+from app.config import Settings
+from app.config import settings as _default_settings
 from app.core.database import (
     create_context_fts_table,
     create_fts_table,

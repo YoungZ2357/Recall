@@ -1,11 +1,18 @@
 """CLI entry point: python -m app.cli
 
 Usage:
-    python -m app.cli ingest <path> [--strategy recursive|fixed_count] [--chunk-size N] [--chunk-overlap N] [--contextualize] [--yes]
+    python -m app.cli ingest <path>
+        [--strategy recursive|fixed_count]
+        [--chunk-size N] [--chunk-overlap N]
+        [--contextualize] [--yes]
     python -m app.cli contextualize [--doc-id UUID] [--all] [--yes]
     python -m app.cli reindex [--doc-id UUID] [--all]
-    python -m app.cli search "<query>" [--top-k N] [--mode prefer_recent|awaken_forgotten] [--verbose]
-    python -m app.cli generate "<query>" [--top-k N] [--mode prefer_recent|awaken_forgotten] [--stream]
+    python -m app.cli search "<query>"
+        [--top-k N] [--mode prefer_recent|awaken_forgotten]
+        [--verbose]
+    python -m app.cli generate "<query>"
+        [--top-k N] [--mode prefer_recent|awaken_forgotten]
+        [--stream]
     python -m app.cli docs list
     python -m app.cli docs delete [--doc-id UUID] [--title TEXT] [--all] [--yes]
     python -m app.cli annotate <doc_id> [--output PATH]

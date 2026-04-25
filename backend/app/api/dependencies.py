@@ -3,7 +3,8 @@ from typing import Annotated
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.config import Settings, settings as _settings
+from app.config import Settings
+from app.config import settings as _settings
 from app.core.database import get_session
 from app.core.exceptions import ConfigError
 from app.core.pipeline_deps import PipelineDeps
@@ -14,7 +15,6 @@ from app.ingestion.embedder import APIEmbedder
 from app.ingestion.parser import get_parser
 from app.ingestion.pipeline import IngestionPipeline
 from app.retrieval.pipeline import RetrievalPipeline
-
 
 # --- Base resources (extracted from app.state) ---
 

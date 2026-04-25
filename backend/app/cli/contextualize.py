@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import UTC
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -137,7 +138,7 @@ async def _run_contextualize(
                 )
 
                 # Re-parse document to get full text
-                if not source_path or not Path(source_path).is_file():
+                if not source_path or not await asyncio.to_thread(lambda: Path(source_path).is_file()):  # noqa: ASYNC240, B023, E501
                     progress.console.print(
                         f"  [yellow]⚠[/yellow] {doc_name}: source file not accessible "
                         f"({source_path})"
@@ -185,7 +186,7 @@ async def _run_contextualize(
                 async with session_factory() as session:
                     updates = [
                         (cs["chunk_id"], ctx)
-                        for cs, ctx in zip(chunk_snapshots, contexts)
+                        for cs, ctx in zip(chunk_snapshots, contexts, strict=False)
                         if ctx is not None
                     ]
                     if updates:
@@ -211,12 +212,12 @@ async def _run_contextualize(
 
                     embed_items = [
                         (cs, ctx)
-                        for cs, ctx in zip(chunk_snapshots, contexts)
+                        for cs, ctx in zip(chunk_snapshots, contexts, strict=False)
                         if ctx is not None
                     ]
                     if not embed_items:
                         progress.console.print(
-                            f"  [yellow]⚠[/yellow] {doc_name}: all LLM calls failed, skipping re-embed"
+                            f"  [yellow]⚠[/yellow] {doc_name}: all LLM calls failed, skipping re-embed"  # noqa: E501
                         )
                         failed_total += n_chunks
                         progress.advance(doc_task)
@@ -235,9 +236,9 @@ async def _run_contextualize(
                         progress.advance(doc_task)
                         continue
 
-                    from datetime import datetime, timezone
+                    from datetime import datetime
 
-                    now_iso = datetime.now(timezone.utc).isoformat()
+                    now_iso = datetime.now(UTC).isoformat()
                     points = [
                         PointStruct(
                             id=str(cs["chunk_id"]),
@@ -249,7 +250,7 @@ async def _run_contextualize(
                                 "created_at": now_iso,
                             },
                         )
-                        for (cs, _ctx), vector in zip(embed_items, vectors)
+                        for (cs, _ctx), vector in zip(embed_items, vectors, strict=False)
                     ]
 
                     try:

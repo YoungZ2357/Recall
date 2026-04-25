@@ -69,12 +69,12 @@ _CITATION_FEATURES: list[re.Pattern[str]] = [
     re.compile(r"\[\d+(?:[,\s]+\d+)*\]"),                                # [1], [1, 2]
     re.compile(r"\[[A-Za-z][A-Za-z0-9]*\+?\d{2,4}\]"),                  # [Bel+15], [BVNB13]
     re.compile(r"\(\s*\d{4}[a-z]?\s*\)|,\s*\d{4}[a-z]?\b"),            # (2023), (2019a), , 2024
-    re.compile(r"\b[A-Z][a-z]+,\s+[A-Z]\."),                            # LastName, F. (author-initial)
+    re.compile(r"\b[A-Z][a-z]+,\s+[A-Z]\."),                            # LastName, F. (author-initial)  # noqa: E501
     re.compile(r"doi[:.]", re.IGNORECASE),                               # doi: / doi.
     re.compile(r"https?://"),                                            # URLs
     re.compile(r"arXiv:", re.IGNORECASE),                                # arXiv:
-    re.compile(                                                          # academic keywords + journal abbrevs
-        r"\b(?:Proceedings|Conference|Journal|Trans\.|Vol\.|pp\.|et al\.|J\.|Rev\.|Proc\.|Conf\.)\b",
+    re.compile(                                                          # academic keywords + journal abbrevs  # noqa: E501
+        r"\b(?:Proceedings|Conference|Journal|Trans\.|Vol\.|pp\.|et al\.|J\.|Rev\.|Proc\.|Conf\.)\b",  # noqa: E501
         re.IGNORECASE,
     ),
 ]
@@ -251,7 +251,10 @@ def content_filter(text: str, *, use_markdown_stripper: bool = False) -> Content
 
     filtered = text[:cut_char].rstrip()
     removed = total_chars - cut_char
-    logger.debug("content_filter: cut at char %d (%s), removed %d chars", cut_char, cut_reason, removed)
+    logger.debug(
+        "content_filter: cut at char %d (%s), removed %d chars",
+        cut_char, cut_reason, removed,
+    )
     return ContentFilterResult(
         filtered_text=filtered,
         removed_chars=removed,

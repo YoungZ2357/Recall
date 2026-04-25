@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 from uuid import UUID
 
 import typer
@@ -29,7 +29,7 @@ _CONTENT_PREVIEW_LIMIT = 500
 def annotate(
     doc_id: Annotated[str, typer.Argument(help="Document UUID to annotate.")],
     output: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--output", "-o", help="Output JSON file path."),
     ] = None,
 ) -> None:
@@ -37,7 +37,7 @@ def annotate(
     asyncio.run(_run_annotate(doc_id, output))
 
 
-async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
+async def _run_annotate(doc_id: str, output_path: str | None) -> None:
     from app.config import settings
     from app.core.chunk_manager import ChunkManager
     from app.core.repository import ChunkRepository, DocumentRepository
@@ -50,7 +50,7 @@ async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
                 doc_uuid = UUID(doc_id)
             except ValueError:
                 console.print(f"[red]Error: '{doc_id}' is not a valid UUID.[/red]")
-                raise typer.Exit(1)
+                raise typer.Exit(1) from None
 
             doc = await DocumentRepository.get_by_id(session, doc_uuid)
             if doc is None:
@@ -65,7 +65,7 @@ async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
             # Resolve output path
             out_file = Path(output_path) if output_path else Path(f"eval_manual_{doc_id[:8]}.json")
             if out_file.exists():
-                console.print(f"[yellow]Warning: '{out_file}' already exists and will be overwritten.[/yellow]")
+                console.print(f"[yellow]Warning: '{out_file}' already exists and will be overwritten.[/yellow]")  # noqa: E501
 
             console.print(f"\n[bold]Document:[/bold] {doc.title or doc_id}")
             console.print(f"[bold]Chunks:[/bold] {len(chunks)}")
@@ -80,7 +80,11 @@ async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
                 chunk = chunks[position]
                 content = chunk.content or ""
                 preview = content[:_CONTENT_PREVIEW_LIMIT]
-                suffix = f"... ({len(content)} chars)" if len(content) > _CONTENT_PREVIEW_LIMIT else ""
+                suffix = (
+                    f"... ({len(content)} chars)"
+                    if len(content) > _CONTENT_PREVIEW_LIMIT
+                    else ""
+                )
 
                 tags_display = ", ".join(json.loads(chunk.tags)) if chunk.tags else "(none)"
                 panel_content = (
@@ -90,11 +94,11 @@ async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
                 console.print(
                     Panel(
                         panel_content,
-                        title=f"Chunk {position + 1}/{len(chunks)}  chunk_index={chunk.chunk_index}",
+                        title=f"Chunk {position + 1}/{len(chunks)}  chunk_index={chunk.chunk_index}",  # noqa: E501
                         title_align="left",
                     )
                 )
-                console.print("  [a] Add query  [d] Delete chunk  [n] Next  [b] Back  [q] Save & quit")
+                console.print("  [a] Add query  [d] Delete chunk  [n] Next  [b] Back  [q] Save & quit")  # noqa: E501
 
                 action = Prompt.ask("Action", default="n").strip().lower()
 
@@ -107,7 +111,7 @@ async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
                             default="factual",
                         ).strip().lower()
                         if qt not in _VALID_QUERY_TYPES:
-                            console.print(f"[red]Invalid query_type '{qt}'. Choose from: factual, comparative, structural.[/red]")
+                            console.print(f"[red]Invalid query_type '{qt}'. Choose from: factual, comparative, structural.[/red]")  # noqa: E501
                             continue
 
                         query_text = Prompt.ask("query (empty line to finish)").strip()
@@ -132,7 +136,7 @@ async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
 
                 elif action == "d":
                     confirm = Prompt.ask(
-                        f"Warning: confirm delete chunk (index={chunk.chunk_index})? Irreversible [y/N]",
+                        f"Warning: confirm delete chunk (index={chunk.chunk_index})? Irreversible [y/N]",  # noqa: E501
                         default="N",
                     ).strip().lower()
                     if confirm == "y":
@@ -151,7 +155,7 @@ async def _run_annotate(doc_id: str, output_path: Optional[str]) -> None:
 
                 elif action == "n":
                     if position >= len(chunks) - 1:
-                        console.print("[dim]Already at last chunk. [q] to quit or [b] to go back.[/dim]")
+                        console.print("[dim]Already at last chunk. [q] to quit or [b] to go back.[/dim]")  # noqa: E501
                     else:
                         position += 1
                         stats["skipped"] += 1
@@ -195,7 +199,7 @@ def _save_output(
         )
     elif stats["deleted"] > 0:
         console.print(
-            f"\n[yellow]No queries annotated. {stats['deleted']} chunk(s) deleted. No file written.[/yellow]"
+            f"\n[yellow]No queries annotated. {stats['deleted']} chunk(s) deleted. No file written.[/yellow]"  # noqa: E501
         )
     else:
         console.print("\n[yellow]No queries annotated. No file written.[/yellow]")

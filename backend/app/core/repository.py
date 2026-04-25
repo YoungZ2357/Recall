@@ -10,7 +10,6 @@ from app.core.models import Chunk, ChunkAccess, Document, SyncStatus
 from app.core.schemas import ChunkCreate, DocumentCreate
 
 
-
 @dataclass
 class AccessSummary:
     """Aggregated access stats for a single chunk."""

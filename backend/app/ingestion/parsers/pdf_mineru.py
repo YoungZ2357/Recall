@@ -14,10 +14,10 @@ import tempfile
 from pathlib import Path
 from typing import ClassVar
 
-logger = logging.getLogger(__name__)
-
 from app.core.exceptions import ParsingError
 from app.ingestion.parser import BaseParser, ParseResult
+
+logger = logging.getLogger(__name__)
 
 # Resolve toolkit path relative to this file:
 # backend/app/ingestion/parsers/pdf_mineru.py → parents[4] = project root
@@ -75,7 +75,7 @@ class MinerUParser(BaseParser):
                     language=self._language,
                     api_key=self._api_key,
                 )
-            except EnvironmentError as exc:
+            except OSError as exc:
                 raise ParsingError(
                     message="MINERU_API_KEY 未设置，无法使用 MinerU 解析器",
                     detail=str(exc),

@@ -10,12 +10,11 @@ Dependency order (no circular imports):
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, ClassVar, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 
 # ---------------------------------------------------------------------------
 # Intermediate data structures

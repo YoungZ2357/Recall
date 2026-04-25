@@ -16,9 +16,7 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
-import time
 from pathlib import Path
 
 import httpx
@@ -119,7 +117,10 @@ async def call_deepseek(
                 )
                 if resp.status_code == 429:
                     wait = RETRY_BACKOFF_BASE ** attempt
-                    logger.warning("Rate limited, retrying in %.1fs (attempt %d/%d)", wait, attempt, MAX_RETRIES)
+                    logger.warning(
+                        "Rate limited, retrying in %.1fs (attempt %d/%d)",
+                        wait, attempt, MAX_RETRIES,
+                    )
                     await asyncio.sleep(wait)
                     continue
 
@@ -133,11 +134,17 @@ async def call_deepseek(
                 return content
 
             except httpx.HTTPStatusError as e:
-                logger.error("HTTP %d for query %r (attempt %d): %s", e.response.status_code, original_query[:50], attempt, e)
+                logger.error(
+                    "HTTP %d for query %r (attempt %d): %s",
+                    e.response.status_code, original_query[:50], attempt, e,
+                )
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(RETRY_BACKOFF_BASE ** attempt)
             except (httpx.TimeoutException, httpx.ConnectError) as e:
-                logger.error("Connection error for query %r (attempt %d): %s", original_query[:50], attempt, e)
+                logger.error(
+                    "Connection error for query %r (attempt %d): %s",
+                    original_query[:50], attempt, e,
+                )
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(RETRY_BACKOFF_BASE ** attempt)
 
@@ -163,12 +170,15 @@ async def process_query(
     ]
     rewrites = await asyncio.gather(*tasks)
 
-    for rtype, rewritten in zip(REWRITE_TYPES, rewrites):
+    for rtype, rewritten in zip(REWRITE_TYPES, rewrites, strict=False):
         if rewritten is None:
             continue
         # Skip if rewrite is identical to original (no improvement possible)
         if rewritten.strip().lower() == original_query.strip().lower():
-            logger.debug("Rewrite identical to original, skipping: %r [%s]", original_query[:50], rtype)
+            logger.debug(
+                "Rewrite identical to original, skipping: %r [%s]",
+                original_query[:50], rtype,
+            )
             continue
 
         results.append({
@@ -184,6 +194,18 @@ async def process_query(
     return results
 
 
+# ── File I/O helpers (run in thread pool) ─────────────────
+
+def _load_json(path: Path) -> list:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _dump_json(data: list, path: Path) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
 # ── Main ──────────────────────────────────────────────────
 
 async def main(input_path: Path, output_path: Path, concurrency: int) -> None:
@@ -194,8 +216,7 @@ async def main(input_path: Path, output_path: Path, concurrency: int) -> None:
         sys.exit(1)
 
     # Load eval set
-    with open(input_path, "r", encoding="utf-8") as f:
-        eval_records = json.load(f)
+    eval_records = await asyncio.to_thread(_load_json, input_path)
     logger.info("Loaded %d queries from %s", len(eval_records), input_path)
 
     semaphore = asyncio.Semaphore(concurrency)
@@ -226,12 +247,12 @@ async def main(input_path: Path, output_path: Path, concurrency: int) -> None:
             )
 
     # Write output
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_results, f, ensure_ascii=False, indent=2)
+    await asyncio.to_thread(_dump_json, all_results, output_path)
 
     logger.info("Done. %d rewrite pairs written to %s", len(all_results), output_path)
     logger.info(
-        "Stats: %d input queries → %d pairs (%.1f per query avg), %d queries with partial/full failure",
+        "Stats: %d input queries → %d pairs (%.1f per query avg), "
+        "%d queries with partial/full failure",
         len(eval_records),
         len(all_results),
         len(all_results) / max(len(eval_records), 1),
@@ -240,10 +261,21 @@ async def main(input_path: Path, output_path: Path, concurrency: int) -> None:
 
 
 def cli() -> None:
-    parser = argparse.ArgumentParser(description="Generate query rewrite SFT dataset via DeepSeek API")
-    parser.add_argument("--input", "-i", type=Path, required=True, help="Path to eval test set JSON")
-    parser.add_argument("--output", "-o", type=Path, default=Path("rewrite_sft_dataset.json"), help="Output path")
-    parser.add_argument("--concurrency", "-c", type=int, default=5, help="Max concurrent API calls (default: 5)")
+    parser = argparse.ArgumentParser(
+        description="Generate query rewrite SFT dataset via DeepSeek API",  # noqa: E501
+    )
+    parser.add_argument(
+        "--input", "-i", type=Path, required=True,
+        help="Path to eval test set JSON",  # noqa: E501
+    )
+    parser.add_argument(
+        "--output", "-o", type=Path,
+        default=Path("rewrite_sft_dataset.json"), help="Output path",  # noqa: E501
+    )
+    parser.add_argument(
+        "--concurrency", "-c", type=int, default=5,
+        help="Max concurrent API calls (default: 5)",  # noqa: E501
+    )
     args = parser.parse_args()
 
     if not args.input.exists():
