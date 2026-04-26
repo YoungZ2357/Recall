@@ -22,7 +22,6 @@ from app.retrieval.configs import (
 )
 from app.retrieval.operators import (
     PipelineContext,
-    QueryRoute,
     SearchHit,
     TransformedQuery,
 )

@@ -49,24 +49,20 @@ async def _run_generate(
     stream: bool,
 ) -> None:
     from app.config import settings
-    from app.services import SearchService
 
     resources = await init_deps()
     try:
-        if resources.generator is None:
+        if resources.generation_service is None:
             console.print(
                 "[red]LLM generator not available.[/red] "
                 "Set the [bold]LLM_API_KEY[/bold] environment variable to enable generation."
             )
             raise typer.Exit(code=1)
 
-        generator = resources.generator
-        search_service = SearchService(
-            embedder=resources.embedder,
-            qdrant_client=resources.qdrant_client,
-            session_factory=resources.session_factory,
-        )
+        gen_service = resources.generation_service
+        search_service = resources.search_service
 
+        # Step 1: retrieve context
         results = await search_service.search(
             query_text=query,
             top_k=top_k,
@@ -98,7 +94,9 @@ async def _run_generate(
         # Generate answer
         if stream:
             console.print(f"\n[bold]Answer[/bold] ([dim]{settings.llm_model}[/dim])\n")
-            async for chunk in generator.generate_stream(query, results, gen_mode=gen_mode):
+            async for chunk in gen_service._generator.generate_stream(
+                query, results, gen_mode=gen_mode,
+            ):
                 if chunk.strip() == "data: [DONE]":
                     break
                 if chunk.startswith("data: "):
@@ -109,7 +107,7 @@ async def _run_generate(
                         pass
             print()
         else:
-            response = await generator.generate(query, results, gen_mode=gen_mode)
+            response = await gen_service._generator.generate(query, results, gen_mode=gen_mode)
             console.print(
                 Panel(
                     response.answer,
@@ -125,4 +123,4 @@ async def _run_generate(
                 )
 
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
+        await teardown_deps(resources)

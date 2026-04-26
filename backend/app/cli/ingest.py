@@ -84,17 +84,17 @@ async def _run_ingest(
 ) -> None:
     from app.config import settings
 
-    session_factory, qdrant, embedder, generator = await init_deps(settings)
+    resources = await init_deps(settings)
     try:
         from app.ingestion.contextualizer import ContextGenerator
         from app.ingestion.tagger import AutoTagger
 
-        tagger = AutoTagger(generator) if generator is not None else None
+        tagger = AutoTagger(resources.generator) if resources.generator is not None else None
 
         # Resolve contextualizer: requires LLM + user confirmation
         contextualizer: ContextGenerator | None = None
         if contextualize:
-            if generator is None:
+            if resources.generator is None:
                 console.print(
                     "[yellow]--contextualize requires LLM_API_KEY to be configured. "
                     "Skipping context generation.[/yellow]"
@@ -104,7 +104,7 @@ async def _run_ingest(
                     "Contextualize will call LLM once per chunk. Continue?",
                     default=False,
                 ):
-                    contextualizer = ContextGenerator(generator)
+                    contextualizer = ContextGenerator(resources.generator)
                 else:
                     console.print("[dim]Context generation skipped by user.[/dim]")
 
@@ -132,9 +132,9 @@ async def _run_ingest(
         pipeline = IngestionPipeline(
             parser_factory=parser_factory,
             chunker=chunker,
-            embedder=embedder,
-            session_factory=session_factory,
-            qdrant_service=qdrant,
+            embedder=resources.embedder,
+            session_factory=resources.session_factory,
+            qdrant_service=resources.qdrant_client,
             tagger=tagger,
             contextualizer=contextualizer,
             strip_tail=strip_tail,
@@ -169,7 +169,7 @@ async def _run_ingest(
             raise typer.Exit(1)
 
     finally:
-        await teardown_deps(qdrant, embedder, generator)
+        await teardown_deps(resources)
 
 
 async def _ingest_single(

@@ -42,9 +42,9 @@ async def _run_annotate(doc_id: str, output_path: str | None) -> None:
     from app.core.chunk_manager import ChunkManager
     from app.core.repository import ChunkRepository, DocumentRepository
 
-    session_factory, qdrant, embedder, generator = await init_deps(settings)
+    resources = await init_deps(settings)
     try:
-        async with session_factory() as session:
+        async with resources.session_factory() as session:
             # Validate document exists
             try:
                 doc_uuid = UUID(doc_id)
@@ -140,7 +140,9 @@ async def _run_annotate(doc_id: str, output_path: str | None) -> None:
                         default="N",
                     ).strip().lower()
                     if confirm == "y":
-                        await ChunkManager.delete_chunk(session, qdrant, str(chunk.chunk_id))
+                        await ChunkManager.delete_chunk(
+                            session, resources.qdrant_client, str(chunk.chunk_id),
+                        )
                         chunks.pop(position)
                         stats["deleted"] += 1
                         console.print(f"[yellow]Chunk deleted. Remaining: {len(chunks)}[/yellow]")
@@ -176,7 +178,7 @@ async def _run_annotate(doc_id: str, output_path: str | None) -> None:
             _save_output(annotations, stats, out_file)
 
     finally:
-        await teardown_deps(qdrant, embedder, generator)
+        await teardown_deps(resources)
 
 
 def _save_output(

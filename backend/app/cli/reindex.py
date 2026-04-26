@@ -50,7 +50,7 @@ async def _run_reindex(doc_id: str | None, force_all: bool) -> None:
     from app.config import settings
     from app.core.database import get_async_session
 
-    _, qdrant, embedder, _ = await init_deps(settings)
+    resources = await init_deps(settings)
     try:
         async with get_async_session() as session:
             # Determine target documents
@@ -111,8 +111,8 @@ async def _run_reindex(doc_id: str | None, force_all: bool) -> None:
                     try:
                         result = await ChunkManager.reindex_document(
                             session,
-                            qdrant,
-                            embedder,
+                            resources.qdrant_client,
+                            resources.embedder,
                             doc_id_str,
                             chunk_callback=make_chunk_callback(chunk_task, doc_label),
                         )
@@ -149,4 +149,4 @@ async def _run_reindex(doc_id: str | None, force_all: bool) -> None:
             )
 
     finally:
-        await teardown_deps(qdrant, embedder)
+        await teardown_deps(resources)

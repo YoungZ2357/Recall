@@ -4,8 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
-from app.api.dependencies import PipelineDepsDep, SessionDep, build_retrieval_pipeline
-from app.config import settings
+from app.api.dependencies import SearchServiceDep, SessionDep
 from app.core.models import Chunk, Document
 from app.core.repository import ChunkRepository
 from app.core.schemas import (
@@ -22,21 +21,19 @@ router = APIRouter()
 @router.post("", response_model=list[SearchResultItem])
 async def search(
     request: SearchRequest,
-    deps: PipelineDepsDep,
+    search_service: SearchServiceDep,
     session: SessionDep,
 ) -> list[SearchResultItem] | JSONResponse:
     try:
-        pipeline = await build_retrieval_pipeline(
-            request.topology, deps, session, settings.default_topology,
+        results = await search_service.search(
+            query_text=request.query,
+            top_k=request.top_k,
+            retention_mode=request.mode,
+            topology_spec=request.topology,
+            topology_session=session,
         )
     except ValueError as e:
         return JSONResponse(status_code=400, content={"detail": str(e)})
-
-    results = await pipeline.search(
-        query_text=request.query,
-        top_k=request.top_k,
-        retention_mode=request.mode,
-    )
 
     if not results:
         return []

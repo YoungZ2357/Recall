@@ -11,12 +11,12 @@ from uuid import UUID
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from app.cli._init_deps import init_deps, teardown_deps
+from app.cli._init_deps import AppResources, init_deps, teardown_deps
 from app.config import settings
 from app.core.chunk_manager import ChunkManager
 from app.core.models import SyncStatus
 from app.core.repository import DocumentRepository
-from app.services import DocumentService, SearchService
+from app.services import DocumentService
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +29,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(server: FastMCP):  # noqa: ARG001
     resources = await init_deps(settings)
     try:
-        yield {
-            "session_factory": resources.session_factory,
-            "qdrant": resources.qdrant_client,
-            "embedder": resources.embedder,
-            "generator": resources.generator,
-        }
+        yield resources
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
+        await teardown_deps(resources)
 
 
 mcp = FastMCP("Recall", lifespan=lifespan)
@@ -64,13 +59,8 @@ async def search(
         JSON array of results. Each item contains chunk_id, document_title,
         content, final_score, retrieval_score, metadata_score, retention_score.
     """
-    lc = ctx.request_context.lifespan_context
-    search_service = SearchService(
-        embedder=lc["embedder"],
-        qdrant_client=lc["qdrant"],
-        session_factory=lc["session_factory"],
-    )
-    results = await search_service.search(
+    resources: AppResources = ctx.request_context.lifespan_context
+    results = await resources.search_service.search(
         query_text=query,
         top_k=top_k,
         retention_mode=mode,
@@ -110,22 +100,15 @@ async def generate(
     Returns:
         The generated answer text, or an error message if the LLM is not configured.
     """
-    lc = ctx.request_context.lifespan_context
-    generator = lc["generator"]
-    if generator is None:
+    resources: AppResources = ctx.request_context.lifespan_context
+    if resources.generation_service is None:
         return "Error: LLM generator not available. Set LLM_API_KEY to enable generation."
 
-    search_service = SearchService(
-        embedder=lc["embedder"],
-        qdrant_client=lc["qdrant"],
-        session_factory=lc["session_factory"],
-    )
-    results = await search_service.search(
-        query_text=query,
+    results, response = await resources.generation_service.search_and_generate(
+        query=query,
         top_k=top_k,
-        retention_mode=mode,
+        mode=mode,
     )
-    response = await generator.generate(query, results)
     return response.answer
 
 
@@ -137,10 +120,9 @@ async def list_documents(ctx: Context) -> str:
         JSON array of documents. Each item contains document_id, title,
         source_path, sync_status, and created_at (ISO 8601).
     """
-    lc = ctx.request_context.lifespan_context
-    session_factory = lc["session_factory"]
+    resources: AppResources = ctx.request_context.lifespan_context
 
-    async with session_factory() as session:
+    async with resources.session_factory() as session:
         docs = await DocumentService.list_all(session)
         payload = json.dumps(
             [
@@ -183,9 +165,10 @@ async def reindex(
         Plain-text summary of succeeded/failed counts and any errors.
     """
     lc = ctx.request_context.lifespan_context
-    session_factory = lc["session_factory"]
-    qdrant = lc["qdrant"]
-    embedder = lc["embedder"]
+    resources: AppResources = lc
+    session_factory = resources.session_factory
+    qdrant = resources.qdrant_client
+    embedder = resources.embedder
 
     async with session_factory() as session:
         if doc_id is not None:

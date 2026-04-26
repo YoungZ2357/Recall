@@ -68,7 +68,7 @@ async def _run_list() -> None:
     from app.core.database import get_async_session
     from app.services import DocumentService
 
-    _, qdrant, embedder, _ = await init_deps(settings)
+    resources = await init_deps(settings)
     try:
         async with get_async_session() as session:
             docs = await DocumentService.list_all(session)
@@ -98,7 +98,7 @@ async def _run_list() -> None:
         console.print(table)
 
     finally:
-        await teardown_deps(qdrant, embedder)
+        await teardown_deps(resources)
 
 
 async def _run_delete(
@@ -112,7 +112,7 @@ async def _run_delete(
     from app.core.exceptions import DocumentNotFoundError, VectorDBError
     from app.services import DocumentService
 
-    _, qdrant, embedder, _ = await init_deps(settings)
+    resources = await init_deps(settings)
     try:
         async with get_async_session() as session:
             if doc_id is not None:
@@ -166,7 +166,9 @@ async def _run_delete(
             for doc in targets:
                 doc_id_str = str(doc.document_id)
                 try:
-                    await DocumentService.delete_document(session, qdrant, doc_id_str)
+                    await DocumentService.delete_document(
+                        session, resources.qdrant_client, doc_id_str,
+                    )
                     console.print(
                         f"[green]Deleted:[/green] {doc.title or doc_id_str}"
                     )
@@ -184,4 +186,4 @@ async def _run_delete(
             console.print(f"\nDone. {success_count}/{len(targets)} document(s) deleted.")
 
     finally:
-        await teardown_deps(qdrant, embedder)
+        await teardown_deps(resources)

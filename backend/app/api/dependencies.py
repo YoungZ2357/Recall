@@ -7,17 +7,13 @@ from app.config import Settings
 from app.config import settings as _settings
 from app.core.database import get_session
 from app.core.exceptions import ConfigError
-from app.core.pipeline_deps import PipelineDeps
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.chunker import RecursiveSplitStrategy
 from app.ingestion.embedder import APIEmbedder
 from app.ingestion.parser import get_parser
 from app.ingestion.pipeline import IngestionPipeline
-from app.retrieval.engine import instantiate
-from app.retrieval.graph import inject_normalizers, validate
-from app.retrieval.pipeline import RetrievalPipeline
-from app.retrieval.topology import TopologySpecJSON, resolve_topology
+from app.services import GenerationService, SearchService
 
 # --- Base resources (extracted from app.state) ---
 
@@ -48,53 +44,25 @@ def get_generator(request: Request) -> LLMGenerator:
 get_db_session = get_session
 
 
-# --- Composite dependencies: Pipelines (built per request, lightweight, no I/O) ---
+# --- Service dependencies ---
 
-def get_retrieval_pipeline(
+def get_search_service(
     qdrant: Annotated[QdrantService, Depends(get_qdrant)],
     embedder: Annotated[APIEmbedder, Depends(get_embedder)],
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
-) -> RetrievalPipeline:
-    from app.retrieval import workflows
-    deps = PipelineDeps(
-        embedder=embedder,
-        qdrant_client=qdrant,
-        session_factory=session_factory,
-    )
-    return RetrievalPipeline(
-        dag=workflows.build_from_settings(deps),
-        embedder=deps.embedder,
-        session_factory=deps.session_factory,
-    )
-
-
-def get_pipeline_deps(
-    qdrant: Annotated[QdrantService, Depends(get_qdrant)],
-    embedder: Annotated[APIEmbedder, Depends(get_embedder)],
-    session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
-) -> PipelineDeps:
-    return PipelineDeps(
+) -> SearchService:
+    return SearchService(
         embedder=embedder,
         qdrant_client=qdrant,
         session_factory=session_factory,
     )
 
 
-async def build_retrieval_pipeline(
-    topology_spec: TopologySpecJSON | None,
-    deps: PipelineDeps,
-    session: AsyncSession,
-    default_topology_name: str,
-) -> RetrievalPipeline:
-    graph_spec = await resolve_topology(topology_spec, default_topology_name, session)
-    validate(graph_spec)
-    graph_spec = inject_normalizers(graph_spec)
-    dag = instantiate(graph_spec, deps)
-    return RetrievalPipeline(
-        dag=dag,
-        embedder=deps.embedder,
-        session_factory=deps.session_factory,
-    )
+def get_generation_service(
+    search_service: Annotated[SearchService, Depends(get_search_service)],
+    generator: Annotated[LLMGenerator, Depends(get_generator)],
+) -> GenerationService:
+    return GenerationService(search_service, generator)
 
 
 def get_ingestion_pipeline(
@@ -117,7 +85,7 @@ QdrantDep = Annotated[QdrantService, Depends(get_qdrant)]
 EmbedderDep = Annotated[APIEmbedder, Depends(get_embedder)]
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
-RetrievalPipelineDep = Annotated[RetrievalPipeline, Depends(get_retrieval_pipeline)]
 IngestionPipelineDep = Annotated[IngestionPipeline, Depends(get_ingestion_pipeline)]
 GeneratorDep = Annotated[LLMGenerator, Depends(get_generator)]
-PipelineDepsDep = Annotated[PipelineDeps, Depends(get_pipeline_deps)]
+SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
+GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]

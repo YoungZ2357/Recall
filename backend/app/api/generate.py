@@ -7,8 +7,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 
-from app.api.dependencies import GeneratorDep, PipelineDepsDep, SessionDep, build_retrieval_pipeline
-from app.config import settings
+from app.api.dependencies import GenerationServiceDep, SessionDep
 from app.core.models import Chunk, Document
 from app.core.schemas import GenerateRequest, GenerateResponse, RetrievalResult, SourceInfo
 
@@ -61,38 +60,32 @@ async def _stream_with_sources(
 @router.post("", response_model=GenerateResponse)
 async def generate(
     request: GenerateRequest,
-    generator: GeneratorDep,
-    deps: PipelineDepsDep,
+    gen_service: GenerationServiceDep,
     session: SessionDep,
 ) -> GenerateResponse | StreamingResponse | JSONResponse:
     try:
-        pipeline = await build_retrieval_pipeline(
-            request.topology, deps, session, settings.default_topology,
+        if request.stream:
+            results, stream = await gen_service.search_and_generate_stream(
+                query=request.query,
+                top_k=request.top_k,
+                mode=request.mode,
+                topology_spec=request.topology,
+                topology_session=session,
+            )
+            sources_json = await _build_sources(session, results)
+            return StreamingResponse(
+                _stream_with_sources(stream, sources_json),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
+        _results, response = await gen_service.search_and_generate(
+            query=request.query,
+            top_k=request.top_k,
+            mode=request.mode,
+            topology_spec=request.topology,
+            topology_session=session,
         )
+        return response
     except ValueError as e:
         return JSONResponse(status_code=400, content={"detail": str(e)})
-
-    results = await pipeline.search(
-        query_text=request.query,
-        top_k=request.top_k,
-        retention_mode=request.mode,
-    )
-
-    if request.stream:
-        sources_json = await _build_sources(session, results)
-        return StreamingResponse(
-            _stream_with_sources(
-                generator.generate_stream(
-                    query=request.query,
-                    context=results,
-                ),
-                sources_json,
-            ),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    return await generator.generate(
-        query=request.query,
-        context=results,
-    )

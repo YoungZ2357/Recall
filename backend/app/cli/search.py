@@ -41,17 +41,9 @@ async def _run_search(
     mode: str,
     verbose: bool,
 ) -> None:
-    from app.services import SearchService
-
     resources = await init_deps()
     try:
-        search_service = SearchService(
-            embedder=resources.embedder,
-            qdrant_client=resources.qdrant_client,
-            session_factory=resources.session_factory,
-        )
-
-        results = await search_service.search(
+        results = await resources.search_service.search(
             query_text=query,
             top_k=top_k,
             retention_mode=mode,
@@ -98,4 +90,4 @@ async def _run_search(
         console.print(table)
 
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder)
+        await teardown_deps(resources)
