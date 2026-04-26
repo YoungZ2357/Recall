@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse
 from app.api import router
 from app.cli._init_deps import init_deps, teardown_deps
 from app.config import settings
-from app.core.database import dispose_engine
 from app.core.exceptions import RecallError
 
 
@@ -19,14 +18,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger = logging.getLogger(__name__)
     logger.info("Starting Recall API server")
 
-    session_factory, qdrant, embedder, generator = await init_deps(settings)
-    app.state.session_factory = session_factory
-    app.state.qdrant = qdrant
-    app.state.embedder = embedder
-    app.state.generator = generator
+    resources = await init_deps(settings)
+    app.state.session_factory = resources.session_factory
+    app.state.qdrant = resources.qdrant_client
+    app.state.embedder = resources.embedder
+    app.state.generator = resources.generator
 
     # Seed builtin topology configs
-    async with session_factory() as session:
+    async with resources.session_factory() as session:
         from sqlalchemy import select
 
         from app.core.models import TopologyConfig
@@ -45,8 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     logger.info("Shutting down Recall API server")
-    await teardown_deps(qdrant, embedder, generator)
-    await dispose_engine()
+    await teardown_deps(resources)
 
 
 def create_app() -> FastAPI:

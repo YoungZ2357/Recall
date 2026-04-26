@@ -7,15 +7,11 @@ Run with:
 import json
 import logging
 from contextlib import asynccontextmanager
-from uuid import UUID
 
 from mcp.server.fastmcp import Context, FastMCP
 
 from app.cli._init_deps import AppResources, init_deps, teardown_deps
 from app.config import settings
-from app.core.chunk_manager import ChunkManager
-from app.core.models import SyncStatus
-from app.core.repository import DocumentRepository
 from app.services import DocumentService
 
 logger = logging.getLogger(__name__)
@@ -166,53 +162,40 @@ async def reindex(
     """
     lc = ctx.request_context.lifespan_context
     resources: AppResources = lc
-    session_factory = resources.session_factory
-    qdrant = resources.qdrant_client
-    embedder = resources.embedder
+    svc = resources.reindex_service
 
-    async with session_factory() as session:
-        if doc_id is not None:
-            doc = await DocumentRepository.get_by_id(session, UUID(doc_id))
-            if doc is None:
-                return f"Error: document not found: {doc_id}"
-            docs = [doc]
-        elif reindex_all:
-            docs = await DocumentRepository.list_all(session)
-        else:
-            all_docs = await DocumentRepository.list_all(session)
-            docs = [
-                d for d in all_docs
-                if d.sync_status in (SyncStatus.DIRTY, SyncStatus.FAILED)
-            ]
+    if doc_id is not None:
+        try:
+            result = await svc.reindex_document(doc_id)
+        except Exception as exc:
+            logger.error("Failed to reindex document %s: %s", doc_id, exc)
+            return f"Reindex failed: {exc}"
 
-        if not docs:
-            return "No documents to reindex."
+        if result.health_check_passed:
+            return "Reindex complete: 1 succeeded, 0 failed."
 
-        succeeded = 0
-        failed = 0
-        errors: list[str] = []
+        lines = ["Reindex complete: 0 succeeded, 1 failed."]
+        lines.append("Errors:")
+        for err in result.errors:
+            lines.append(f"  - {err}")
+        return "\n".join(lines)
 
-        for doc in docs:
-            doc_id_str = str(doc.document_id)
-            label = doc.title or doc_id_str[:8]
-            try:
-                result = await ChunkManager.reindex_document(
-                    session, qdrant, embedder, doc_id_str
-                )
-                if result.health_check_passed:
-                    succeeded += 1
-                else:
-                    failed += 1
-                    errors.append(
-                        f"{label}: health check failed "
-                        f"({result.succeeded}/{result.total} chunks synced)"
-                    )
-                for err in result.errors:
-                    errors.append(f"{label}: {err}")
-            except Exception as exc:
-                failed += 1
-                logger.error("Failed to reindex document %s: %s", doc_id_str, exc)
-                errors.append(f"{label}: {exc}")
+    if reindex_all:
+        results = await svc.reindex_all()
+    else:
+        results = await svc.reindex_dirty()
+
+    if not results:
+        return "No documents to reindex."
+
+    succeeded = sum(1 for r in results if r.health_check_passed)
+    failed = sum(1 for r in results if not r.health_check_passed)
+    errors: list[str] = []
+    for r in results:
+        if not r.health_check_passed:
+            label = f"[{r.succeeded}/{r.total} chunks]"
+            errors.append(f"health check failed {label}")
+        errors.extend(r.errors)
 
     lines = [f"Reindex complete: {succeeded} succeeded, {failed} failed."]
     if errors:
