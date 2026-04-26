@@ -232,7 +232,7 @@ async def _run_eval(
                 progress.update(eval_task, completed=current)
 
             report = await run_evaluation(
-                search_service.pipeline,
+                search_service,
                 test_set,
                 top_k=top_k,
                 retention_mode=mode,  # type: ignore[arg-type]

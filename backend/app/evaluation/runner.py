@@ -1,20 +1,22 @@
-"""Evaluation runner: load test set → run retrieval pipeline → compute metrics."""
+"""Evaluation runner: load test set → run retrieval via SearchService → compute metrics."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from app.evaluation.metrics import ndcg_at_k, recall_at_k, reciprocal_rank
 from app.evaluation.schemas import EvalReport, EvalResult, TestSetEntry
-from app.retrieval.pipeline import RetrievalPipeline
+
+if TYPE_CHECKING:
+    from app.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
 
 async def run_evaluation(
-    pipeline: RetrievalPipeline,
+    search_service: SearchService,
     test_set: list[TestSetEntry],
     top_k: int = 10,
     retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent",
@@ -22,11 +24,11 @@ async def run_evaluation(
 ) -> EvalReport:
     """Execute evaluation over the full test set.
 
-    For each query, calls the retrieval pipeline (without recording access)
+    For each query, calls search_service.search() (without recording access)
     and computes per-query metrics. Returns an aggregate report.
 
     Args:
-        pipeline: Configured RetrievalPipeline instance.
+        search_service: Configured SearchService instance.
         test_set: List of test set entries with queries and ground truth.
         top_k: Number of results to retrieve per query.
         retention_mode: Ebbinghaus retention strategy for reranking.
@@ -44,7 +46,7 @@ async def run_evaluation(
         )
 
     for i, entry in enumerate(valid_entries):
-        results = await pipeline.search(
+        results = await search_service.search(
             query_text=entry.query,
             top_k=top_k,
             retention_mode=retention_mode,

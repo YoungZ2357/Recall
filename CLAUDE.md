@@ -20,14 +20,27 @@
 
 # backend
 cd backend
+# activate python environment
+conda activate rag_env
 uvicorn app.main:app --reload
 
 # frontend
 cd frontend
-npm install && num run dev
+npm install && npm run dev
+```
 
-# activate python environment
-conda activate rag_env
+## Lint & Test
+
+```bash
+cd backend
+
+# Ruff — lint + auto-fix (--no-capture-output avoids Windows GBK encoding error)
+conda run -n rag_env --no-capture-output ruff check .
+conda run -n rag_env --no-capture-output ruff check . --fix
+
+# Pytest
+conda run -n rag_env pytest
+conda run -n rag_env pytest tests/test_sqalchemy_conn/test_database.py -v -k "test_create_tables"
 ```
 ## Code Style
 ### Python
