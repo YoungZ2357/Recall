@@ -475,6 +475,56 @@ class ChunkManager:
         return len(chunk_updates)
 
     # ============================================================
+    # Retag (Update tags on all chunks)
+    # ============================================================
+
+    @classmethod
+    async def retag_document(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        doc_id: str,
+        tags: list[str],
+    ) -> int:
+        """Update tags on all chunks of a document in both SQLite and Qdrant.
+
+        SQLite is updated first (source of truth). Qdrant payload update is
+        best-effort: failure is logged as a warning but does not raise.
+
+        Args:
+            session: Database session for SQLite operations.
+            qdrant_service: Qdrant service instance.
+            doc_id: Document UUID as string.
+            tags: List of tag strings to set on all chunks.
+
+        Returns:
+            Number of chunks updated in SQLite.
+
+        Raises:
+            DocumentNotFoundError: Document does not exist.
+        """
+        await cls._get_document(session, doc_id)
+        doc_uuid = UUID(doc_id)
+
+        chunks = await ChunkRepository.list_by_document(session, doc_uuid)
+        if not chunks:
+            return 0
+
+        updated_count = await ChunkRepository.bulk_update_tags(session, doc_uuid, tags)
+
+        chunk_ids = [str(c.chunk_id) for c in chunks]
+        try:
+            await qdrant_service.set_payload_for_points({"tags": tags}, chunk_ids)
+        except Exception as e:
+            logger.warning(
+                "Qdrant payload update failed for document %s: %s. "
+                "SQLite updated; run reindex to sync.",
+                doc_id, e,
+            )
+
+        return updated_count
+
+    # ============================================================
     # Health Check (Consistency Verification)
     # ============================================================
 

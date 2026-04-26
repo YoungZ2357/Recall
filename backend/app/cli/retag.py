@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from app.cli._init_deps import init_deps, teardown_deps
+from app.core.chunk_manager import ChunkManager
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -91,7 +92,6 @@ async def _run_retag(yes: bool) -> None:
                         continue
 
                     content = "\n".join(c.content for c in chunks)
-                    chunk_ids = [str(c.chunk_id) for c in chunks]
 
                     # Call auto-tagger (truncates internally to 8000 chars)
                     tags = await tagger.tag(content, session)
@@ -102,23 +102,10 @@ async def _run_retag(yes: bool) -> None:
                     progress.advance(task)
                     continue
 
-                # Update SQLite
+                # Update tags in both SQLite and Qdrant
                 async with session_factory() as session:
-                    await ChunkRepository.bulk_update_tags(session, doc_id, tags)
+                    await ChunkManager.retag_document(session, qdrant, str(doc_id), tags)
                     await session.commit()
-
-                # Update Qdrant payload
-                try:
-                    await qdrant.set_payload_for_points({"tags": tags}, chunk_ids)
-                except Exception as exc:
-                    progress.console.print(
-                        f"  [yellow]⚠[/yellow] {title}: Qdrant payload update failed ({exc}). "
-                        "SQLite updated; run reindex to sync."
-                    )
-                    # SQLite is source of truth — treat as partial success
-                    succeeded += 1
-                    progress.advance(task)
-                    continue
 
                 progress.console.print(f"  [green]✓[/green] {title}: {tags}")
                 succeeded += 1
