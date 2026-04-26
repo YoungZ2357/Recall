@@ -16,7 +16,7 @@ from app.config import settings
 from app.core.chunk_manager import ChunkManager
 from app.core.models import SyncStatus
 from app.core.repository import DocumentRepository
-from app.services import SearchService
+from app.services import DocumentService, SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ async def list_documents(ctx: Context) -> str:
     session_factory = lc["session_factory"]
 
     async with session_factory() as session:
-        docs = await DocumentRepository.list_all(session)
+        docs = await DocumentService.list_all(session)
         payload = json.dumps(
             [
                 {

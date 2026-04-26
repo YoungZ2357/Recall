@@ -66,12 +66,12 @@ def delete_docs(
 async def _run_list() -> None:
     from app.config import settings
     from app.core.database import get_async_session
-    from app.core.repository import DocumentRepository
+    from app.services import DocumentService
 
     _, qdrant, embedder, _ = await init_deps(settings)
     try:
         async with get_async_session() as session:
-            docs = await DocumentRepository.list_all(session)
+            docs = await DocumentService.list_all(session)
 
         if not docs:
             console.print("[yellow]No documents in the knowledge base.[/yellow]")
@@ -108,23 +108,22 @@ async def _run_delete(
     yes: bool,
 ) -> None:
     from app.config import settings
-    from app.core.chunk_manager import ChunkManager
     from app.core.database import get_async_session
     from app.core.exceptions import DocumentNotFoundError, VectorDBError
-    from app.core.repository import DocumentRepository
+    from app.services import DocumentService
 
     _, qdrant, embedder, _ = await init_deps(settings)
     try:
         async with get_async_session() as session:
             if doc_id is not None:
-                doc = await DocumentRepository.get_by_id(session, UUID(doc_id))
+                doc = await DocumentService.get_by_id(session, UUID(doc_id))
                 if doc is None:
                     console.print(f"[red]Document not found:[/red] {doc_id}")
                     raise typer.Exit(1)
                 targets = [doc]
 
             elif title is not None:
-                all_docs = await DocumentRepository.list_all(session)
+                all_docs = await DocumentService.list_all(session)
                 targets = [d for d in all_docs if d.title == title]
                 if not targets:
                     console.print(f"[red]No document found with title:[/red] {title!r}")
@@ -139,7 +138,7 @@ async def _run_delete(
                     raise typer.Exit(1)
 
             else:  # delete_all
-                targets = await DocumentRepository.list_all(session)
+                targets = await DocumentService.list_all(session)
                 if not targets:
                     console.print("[yellow]No documents to delete.[/yellow]")
                     return
@@ -167,7 +166,7 @@ async def _run_delete(
             for doc in targets:
                 doc_id_str = str(doc.document_id)
                 try:
-                    await ChunkManager.delete_document(session, qdrant, doc_id_str)
+                    await DocumentService.delete_document(session, qdrant, doc_id_str)
                     console.print(
                         f"[green]Deleted:[/green] {doc.title or doc_id_str}"
                     )
