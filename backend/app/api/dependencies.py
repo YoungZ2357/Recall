@@ -14,7 +14,10 @@ from app.ingestion.chunker import RecursiveSplitStrategy
 from app.ingestion.embedder import APIEmbedder
 from app.ingestion.parser import get_parser
 from app.ingestion.pipeline import IngestionPipeline
+from app.retrieval.engine import instantiate
+from app.retrieval.graph import inject_normalizers, validate
 from app.retrieval.pipeline import RetrievalPipeline
+from app.retrieval.topology import TopologySpecJSON, resolve_topology
 
 # --- Base resources (extracted from app.state) ---
 
@@ -74,6 +77,23 @@ def get_pipeline_deps(
         embedder=embedder,
         qdrant_client=qdrant,
         session_factory=session_factory,
+    )
+
+
+async def build_retrieval_pipeline(
+    topology_spec: TopologySpecJSON | None,
+    deps: PipelineDeps,
+    session: AsyncSession,
+    default_topology_name: str,
+) -> RetrievalPipeline:
+    graph_spec = await resolve_topology(topology_spec, default_topology_name, session)
+    validate(graph_spec)
+    graph_spec = inject_normalizers(graph_spec)
+    dag = instantiate(graph_spec, deps)
+    return RetrievalPipeline(
+        dag=dag,
+        embedder=deps.embedder,
+        session_factory=deps.session_factory,
     )
 
 

@@ -7,14 +7,10 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 
-from app.api.dependencies import GeneratorDep, PipelineDepsDep, SessionDep
+from app.api.dependencies import GeneratorDep, PipelineDepsDep, SessionDep, build_retrieval_pipeline
 from app.config import settings
 from app.core.models import Chunk, Document
 from app.core.schemas import GenerateRequest, GenerateResponse, RetrievalResult, SourceInfo
-from app.retrieval.engine import instantiate
-from app.retrieval.graph import inject_normalizers, validate
-from app.retrieval.pipeline import RetrievalPipeline
-from app.retrieval.topology import resolve_topology
 
 logger = logging.getLogger(__name__)
 
@@ -70,22 +66,11 @@ async def generate(
     session: SessionDep,
 ) -> GenerateResponse | StreamingResponse | JSONResponse:
     try:
-        graph_spec = await resolve_topology(request.topology, settings.default_topology, session)
+        pipeline = await build_retrieval_pipeline(
+            request.topology, deps, session, settings.default_topology,
+        )
     except ValueError as e:
         return JSONResponse(status_code=400, content={"detail": str(e)})
-
-    try:
-        validate(graph_spec)
-    except ValueError as e:
-        return JSONResponse(status_code=400, content={"valid": False, "errors": [str(e)]})
-
-    graph_spec = inject_normalizers(graph_spec)
-    dag = instantiate(graph_spec, deps)
-    pipeline = RetrievalPipeline(
-        dag=dag,
-        embedder=deps.embedder,
-        session_factory=deps.session_factory,
-    )
 
     results = await pipeline.search(
         query_text=request.query,
