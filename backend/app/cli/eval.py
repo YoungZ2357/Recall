@@ -193,7 +193,7 @@ async def _run_generate_set(
         )
 
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
+        await teardown_deps(resources)
 
 
 async def _run_eval(
@@ -202,11 +202,8 @@ async def _run_eval(
     output_path: str,
     mode: str,
 ) -> None:
-    from app.core.pipeline_deps import PipelineDeps
     from app.evaluation.runner import run_evaluation
     from app.evaluation.schemas import TestSetEntry
-    from app.retrieval import workflows
-    from app.retrieval.pipeline import RetrievalPipeline
 
     # Load test set
     path = Path(test_set_path)
@@ -220,16 +217,7 @@ async def _run_eval(
 
     resources = await init_deps()
     try:
-        deps = PipelineDeps(
-            embedder=resources.embedder,
-            qdrant_client=resources.qdrant_client,
-            session_factory=resources.session_factory,
-        )
-        pipeline = RetrievalPipeline(
-            dag=workflows.build_from_settings(deps),
-            embedder=deps.embedder,
-            session_factory=deps.session_factory,
-        )
+        search_service = resources.search_service
 
         with Progress(
             SpinnerColumn(),
@@ -244,7 +232,7 @@ async def _run_eval(
                 progress.update(eval_task, completed=current)
 
             report = await run_evaluation(
-                pipeline,
+                search_service,
                 test_set,
                 top_k=top_k,
                 retention_mode=mode,  # type: ignore[arg-type]
@@ -297,4 +285,4 @@ async def _run_eval(
             console.print(f"Report written to [cyan]{out}[/cyan]")
 
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
+        await teardown_deps(resources)

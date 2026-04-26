@@ -12,6 +12,11 @@ Recall is a knowledge base retrieval system with intelligent reranking and minim
 
 ## Common Commands
 
+Before running server/dev commands, activate the conda env first:
+```bash
+conda activate rag_env
+```
+
 ```bash
 # Start Qdrant (required)
 docker compose up qdrant -d
@@ -33,12 +38,14 @@ npm install && npm run dev
 cd backend
 
 # Ruff — lint + auto-fix
-ruff check .
-ruff check . --fix
+conda run -n rag_env --no-capture-output ruff check .
+conda run -n rag_env --no-capture-output ruff check . --fix
 
 # Subset of checks used (pyproject.toml [tool.ruff.lint]):
 #   E/W (pycodestyle), F (pyflakes), I (isort), UP (pyupgrade), B (bugbear), ASYNC
 ```
+
+Note: `--no-capture-output` is required to avoid conda's GBK encoding error on Windows.
 
 No type checker is configured yet (mypy/pyright not in dev deps). Use `ruff` for linting only.
 
@@ -50,16 +57,16 @@ No type checker is configured yet (mypy/pyright not in dev deps). Use `ruff` for
 cd backend
 
 # All tests
-pytest
+conda run -n rag_env pytest
 
 # Single test file
-pytest tests/test_sqalchemy_conn/test_database.py
+conda run -n rag_env pytest tests/test_sqalchemy_conn/test_database.py
 
 # Single test function
-pytest tests/test_sqalchemy_conn/test_database.py::TestDatabase::test_create_async_engine_from_settings
+conda run -n rag_env pytest tests/test_sqalchemy_conn/test_database.py::TestDatabase::test_create_async_engine_from_settings
 
 # Single test with verbose output
-pytest tests/test_sqalchemy_conn/test_database.py -v -k "test_create_tables"
+conda run -n rag_env pytest tests/test_sqalchemy_conn/test_database.py -v -k "test_create_tables"
 ```
 
 Pytest config (`pyproject.toml`):
@@ -156,4 +163,4 @@ docs/design.md               # Technical decision records
 
 - Plan first, code second. Wait for explicit confirmation before coding.
 - Write only what is explicitly requested. Do not proactively add unrequested features.
-- After completing changes, run `ruff check .` and `pytest` to verify correctness.
+- After completing changes, run `conda run -n rag_env --no-capture-output ruff check .` and `conda run -n rag_env pytest` to verify correctness.

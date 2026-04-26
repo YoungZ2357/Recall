@@ -41,27 +41,12 @@ async def _run_search(
     mode: str,
     verbose: bool,
 ) -> None:
-    from app.core.pipeline_deps import PipelineDeps
-    from app.retrieval import workflows
-    from app.retrieval.pipeline import RetrievalPipeline
-
     resources = await init_deps()
     try:
-        deps = PipelineDeps(
-            embedder=resources.embedder,
-            qdrant_client=resources.qdrant_client,
-            session_factory=resources.session_factory,
-        )
-        pipeline = RetrievalPipeline(
-            dag=workflows.build_from_settings(deps),
-            embedder=deps.embedder,
-            session_factory=deps.session_factory,
-        )
-
-        results = await pipeline.search(
+        results = await resources.search_service.search(
             query_text=query,
             top_k=top_k,
-            retention_mode=mode,  # type: ignore[arg-type]
+            retention_mode=mode,
         )
 
         if not results:
@@ -105,4 +90,4 @@ async def _run_search(
         console.print(table)
 
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder)
+        await teardown_deps(resources)

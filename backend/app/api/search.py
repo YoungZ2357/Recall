@@ -4,8 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
-from app.api.dependencies import PipelineDepsDep, SessionDep
-from app.config import settings
+from app.api.dependencies import SearchServiceDep, SessionDep
 from app.core.models import Chunk, Document
 from app.core.repository import ChunkRepository
 from app.core.schemas import (
@@ -13,10 +12,6 @@ from app.core.schemas import (
     SearchRequest,
     SearchResultItem,
 )
-from app.retrieval.engine import instantiate
-from app.retrieval.graph import inject_normalizers, validate
-from app.retrieval.pipeline import RetrievalPipeline
-from app.retrieval.topology import resolve_topology
 
 logger = logging.getLogger(__name__)
 
@@ -26,32 +21,19 @@ router = APIRouter()
 @router.post("", response_model=list[SearchResultItem])
 async def search(
     request: SearchRequest,
-    deps: PipelineDepsDep,
+    search_service: SearchServiceDep,
     session: SessionDep,
 ) -> list[SearchResultItem] | JSONResponse:
     try:
-        graph_spec = await resolve_topology(request.topology, settings.default_topology, session)
+        results = await search_service.search(
+            query_text=request.query,
+            top_k=request.top_k,
+            retention_mode=request.mode,
+            topology_spec=request.topology,
+            topology_session=session,
+        )
     except ValueError as e:
         return JSONResponse(status_code=400, content={"detail": str(e)})
-
-    try:
-        validate(graph_spec)
-    except ValueError as e:
-        return JSONResponse(status_code=400, content={"valid": False, "errors": [str(e)]})
-
-    graph_spec = inject_normalizers(graph_spec)
-    dag = instantiate(graph_spec, deps)
-    pipeline = RetrievalPipeline(
-        dag=dag,
-        embedder=deps.embedder,
-        session_factory=deps.session_factory,
-    )
-
-    results = await pipeline.search(
-        query_text=request.query,
-        top_k=request.top_k,
-        retention_mode=request.mode,
-    )
 
     if not results:
         return []

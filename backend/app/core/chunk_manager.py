@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from app.ingestion.embedder import BaseEmbedder
 
 from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -356,6 +356,173 @@ class ChunkManager:
         await ChunkRepository.delete_by_id(session, UUID(chunk_id))
         await session.commit()
         logger.info(f"Deleted chunk {chunk_id} from all stores")
+
+    # ============================================================
+    # Contextualize (Update context + re-embed)
+    # ============================================================
+
+    @classmethod
+    async def contextualize_chunks(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        embedder: "BaseEmbedder",
+        doc_id: str,
+        chunk_updates: list[dict[str, object]],
+    ) -> int:
+        """Write LLM-generated context to chunks, re-embed, and sync to Qdrant.
+
+        Two-phase commit:
+          Phase 1: Update SQLite context + FTS index, mark DIRTY, commit.
+          Phase 2: Re-embed with context+content, upsert Qdrant, mark SYNCED, commit.
+
+        Caller contract:
+            On SyncError, document may be left in DIRTY or FAILED state.
+            On success, document and chunks are SYNCED.
+
+        Args:
+            session: Database session for SQLite operations.
+            qdrant_service: Qdrant service instance.
+            embedder: Embedder for vector generation.
+            doc_id: Document UUID as string.
+            chunk_updates: List of dicts with keys:
+                chunk_id (UUID): Chunk identifier.
+                content (str): Chunk text content.
+                chunk_index (int): Position within document.
+                tags (list[str]): Chunk tags.
+                context (str): LLM-generated document-level context.
+
+        Returns:
+            Number of chunks successfully contextualized.
+
+        Raises:
+            DocumentNotFoundError: Document does not exist.
+            SyncError: Embedding or Qdrant upsert failed.
+        """
+        if not chunk_updates:
+            return 0
+
+        await cls._get_document(session, doc_id)
+        doc_uuid = UUID(doc_id)
+        chunk_id_uuids: list[UUID] = [cu["chunk_id"] for cu in chunk_updates]  # type: ignore[misc]
+
+        # Phase 1: Update SQLite context fields + FTS index
+        context_updates: list[tuple[UUID, str]] = [
+            (cu["chunk_id"], cu["context"])  # type: ignore[misc]
+            for cu in chunk_updates
+        ]
+        await ChunkRepository.bulk_update_context(session, context_updates, SyncStatus.DIRTY)
+
+        fts_items: list[tuple[UUID, UUID, str, str]] = [
+            (cu["chunk_id"], doc_uuid, cu["context"], cu["content"])  # type: ignore[misc]
+            for cu in chunk_updates
+        ]
+        await FTSRepository.context_bulk_insert_raw(session, fts_items)
+        await session.commit()
+
+        # Phase 2: Re-embed with context, upsert Qdrant
+        embed_texts: list[str] = [
+            cu["context"] + "\n\n" + cu["content"]  # type: ignore[operator]
+            for cu in chunk_updates
+        ]
+        try:
+            vectors = await embedder.embed_batch(embed_texts)
+        except Exception as e:
+            logger.error(f"Embedding failed for document {doc_id}: {e}")
+            raise SyncError(
+                doc_id=doc_id,
+                detail=f"Embedding failed: {e}",
+            ) from e
+
+        now_iso = datetime.now(UTC).isoformat()
+        points: list[PointStruct] = [
+            PointStruct(
+                id=str(cu["chunk_id"]),
+                vector=vector,
+                payload={
+                    "document_id": doc_id,
+                    "chunk_index": cu["chunk_index"],
+                    "tags": cu["tags"],
+                    "created_at": now_iso,
+                },
+            )
+            for cu, vector in zip(chunk_updates, vectors, strict=False)
+        ]
+
+        try:
+            await qdrant_service.upsert(points)
+        except Exception as e:
+            logger.error(f"Qdrant upsert failed for document {doc_id}: {e}")
+            await cls.transition_status(session, doc_id, SyncStatus.FAILED)
+            await session.commit()
+            raise SyncError(
+                doc_id=doc_id,
+                detail=f"Qdrant upsert failed: {e}",
+            ) from e
+
+        # Mark chunks as SYNCED with context_embedded=True
+        await session.execute(
+            update(Chunk)
+            .where(Chunk.chunk_id.in_(chunk_id_uuids))
+            .values(sync_status=SyncStatus.SYNCED, context_embedded=True)
+        )
+        await cls.transition_status(session, doc_id, SyncStatus.SYNCED)
+        await session.commit()
+
+        logger.info(
+            f"Contextualized {len(chunk_updates)} chunks for document {doc_id}"
+        )
+        return len(chunk_updates)
+
+    # ============================================================
+    # Retag (Update tags on all chunks)
+    # ============================================================
+
+    @classmethod
+    async def retag_document(
+        cls,
+        session: AsyncSession,
+        qdrant_service: QdrantService,
+        doc_id: str,
+        tags: list[str],
+    ) -> int:
+        """Update tags on all chunks of a document in both SQLite and Qdrant.
+
+        SQLite is updated first (source of truth). Qdrant payload update is
+        best-effort: failure is logged as a warning but does not raise.
+
+        Args:
+            session: Database session for SQLite operations.
+            qdrant_service: Qdrant service instance.
+            doc_id: Document UUID as string.
+            tags: List of tag strings to set on all chunks.
+
+        Returns:
+            Number of chunks updated in SQLite.
+
+        Raises:
+            DocumentNotFoundError: Document does not exist.
+        """
+        await cls._get_document(session, doc_id)
+        doc_uuid = UUID(doc_id)
+
+        chunks = await ChunkRepository.list_by_document(session, doc_uuid)
+        if not chunks:
+            return 0
+
+        updated_count = await ChunkRepository.bulk_update_tags(session, doc_uuid, tags)
+
+        chunk_ids = [str(c.chunk_id) for c in chunks]
+        try:
+            await qdrant_service.set_payload_for_points({"tags": tags}, chunk_ids)
+        except Exception as e:
+            logger.warning(
+                "Qdrant payload update failed for document %s: %s. "
+                "SQLite updated; run reindex to sync.",
+                doc_id, e,
+            )
+
+        return updated_count
 
     # ============================================================
     # Health Check (Consistency Verification)

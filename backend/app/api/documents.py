@@ -12,17 +12,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.dependencies import (
-    IngestionPipelineDep,
+    IngestionServiceDep,
     QdrantDep,
     SessionDep,
     SettingsDep,
     get_session_factory,
 )
-from app.core.chunk_manager import ChunkManager
 from app.core.exceptions import DocumentNotFoundError, IngestionError, UnsupportedFileTypeError
 from app.core.models import Chunk, SyncStatus
-from app.core.repository import ChunkRepository, DocumentRepository
+from app.core.repository import ChunkRepository
 from app.core.schemas import DeleteResponse, DocumentDetail, DocumentSummary, UploadResponse
+from app.services import DocumentService
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def _get_doc_tags(session, doc_id: UUID) -> list[str]:
 async def list_documents(
     session: SessionDep,
 ) -> list[DocumentSummary]:
-    docs = await DocumentRepository.list_all(session)
+    docs = await DocumentService.list_all(session)
     result: list[DocumentSummary] = []
     for doc in docs:
         total, _synced = await _get_chunk_stats(session, doc.document_id)
@@ -108,7 +108,7 @@ async def get_document(
     doc_id: str,
     session: SessionDep,
 ) -> DocumentDetail:
-    doc = await DocumentRepository.get_by_id(session, UUID(doc_id))
+    doc = await DocumentService.get_by_id(session, UUID(doc_id))
     if doc is None:
         raise DocumentNotFoundError(doc_id=doc_id)
 
@@ -132,7 +132,7 @@ async def get_document(
 async def upload_document(
     file: FastAPIFile,
     settings: SettingsDep,
-    pipeline: IngestionPipelineDep,
+    ingestion_service: IngestionServiceDep,
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
 ) -> UploadResponse:
     ext = FilePath(file.filename or "").suffix.lower()
@@ -162,7 +162,7 @@ async def upload_document(
         )
 
     try:
-        doc = await pipeline.ingest(dest_path)
+        doc = await ingestion_service.ingest_file(dest_path)
     except Exception:
         if await asyncio.to_thread(lambda: dest_path.exists()):
             await asyncio.to_thread(lambda: dest_path.unlink())
@@ -185,11 +185,11 @@ async def delete_document(
     session: SessionDep,
     qdrant: QdrantDep,
 ) -> DeleteResponse:
-    doc = await DocumentRepository.get_by_id(session, UUID(doc_id))
+    doc = await DocumentService.get_by_id(session, UUID(doc_id))
     if doc is None:
         raise DocumentNotFoundError(doc_id=doc_id)
 
-    await ChunkManager.delete_document(session, qdrant, doc_id)
+    await DocumentService.delete_document(session, qdrant, doc_id)
     await session.commit()
 
     return DeleteResponse(deleted=True, doc_id=doc_id)

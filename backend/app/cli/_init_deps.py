@@ -22,6 +22,7 @@ from app.core.exceptions import ConfigError
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.embedder import APIEmbedder
+from app.services import GenerationService, IngestionService, ReindexService, SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,10 @@ class AppResources(NamedTuple):
     qdrant_client: QdrantService
     embedder: APIEmbedder
     generator: LLMGenerator | None
+    search_service: SearchService
+    generation_service: GenerationService | None
+    ingestion_service: IngestionService
+    reindex_service: ReindexService
 
 
 async def init_deps(
@@ -42,8 +47,8 @@ async def init_deps(
         cfg: Settings instance; defaults to module-level settings singleton.
 
     Returns:
-        (session_factory, qdrant_service, embedder, generator) tuple ready for use.
-        generator is None when LLM_API_KEY is not configured.
+        AppResources with populated services ready for use.
+        generation_service is None when LLM_API_KEY is not configured.
     """
     cfg = cfg or _default_settings
 
@@ -74,18 +79,43 @@ async def init_deps(
             logger.warning("LLM generator disabled: llm_api_key not configured")
 
     session_factory = get_session_factory()
-    return AppResources(session_factory, qdrant, embedder, generator)
 
-
-async def teardown_deps(
-    qdrant: QdrantService,
-    embedder: APIEmbedder,
-    generator: LLMGenerator | None = None,
-) -> None:
-    """Close Qdrant connection, HTTP clients, and SQLAlchemy engine."""
-    await qdrant.close()
-    await embedder.aclose()
+    # 5. Build services
+    search_service = SearchService(
+        embedder=embedder,
+        qdrant_client=qdrant,
+        session_factory=session_factory,
+    )
+    generation_service: GenerationService | None = None
     if generator is not None:
-        await generator.aclose()
+        generation_service = GenerationService(search_service, generator)
+
+    ingestion_service = IngestionService(
+        session_factory=session_factory,
+        qdrant_client=qdrant,
+        embedder=embedder,
+        generator=generator,
+        mineru_api_key=cfg.mineru_api_key,
+    )
+
+    reindex_service = ReindexService(
+        session_factory=session_factory,
+        qdrant_client=qdrant,
+        embedder=embedder,
+    )
+
+    return AppResources(
+        session_factory, qdrant, embedder, generator,
+        search_service, generation_service, ingestion_service,
+        reindex_service,
+    )
+
+
+async def teardown_deps(resources: AppResources) -> None:
+    """Close Qdrant connection, HTTP clients, and SQLAlchemy engine."""
+    await resources.qdrant_client.close()
+    await resources.embedder.aclose()
+    if resources.generator is not None:
+        await resources.generator.aclose()
     await dispose_engine()
     logger.debug("Dependencies torn down")

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -53,11 +52,9 @@ async def _run_contextualize(
     all_docs: bool,
     yes: bool,
 ) -> None:
-    from qdrant_client.models import PointStruct
-
     from app.config import settings
-    from app.core.models import SyncStatus
-    from app.core.repository import ChunkRepository, DocumentRepository, FTSRepository
+    from app.core.chunk_manager import ChunkManager
+    from app.core.repository import ChunkRepository, DocumentRepository
     from app.ingestion.contextualizer import ContextGenerator
     from app.ingestion.parser import get_parser
 
@@ -182,111 +179,47 @@ async def _run_contextualize(
 
                 progress.update(chunk_task, visible=False)
 
-                # Write context + mark DIRTY, then re-embed
-                async with session_factory() as session:
-                    updates = [
-                        (cs["chunk_id"], ctx)
-                        for cs, ctx in zip(chunk_snapshots, contexts, strict=False)
-                        if ctx is not None
-                    ]
-                    if updates:
-                        await ChunkRepository.bulk_update_context(
-                            session, updates, SyncStatus.DIRTY
-                        )
-                        # Sync updated context to FTS index; use INSERT OR REPLACE
-                        # to handle chunks being re-contextualized.
-                        doc_id_map: dict[str, UUID] = {
-                            str(cs["chunk_id"]): UUID(doc_id_str)
-                            for cs in chunk_snapshots
-                        }
-                        content_map: dict[str, str] = {
-                            str(cs["chunk_id"]): cs["content"]
-                            for cs in chunk_snapshots
-                        }
-                        fts_items = [
-                            (chunk_id, doc_id_map[str(chunk_id)], ctx, content_map[str(chunk_id)])
-                            for chunk_id, ctx in updates
-                        ]
-                        await FTSRepository.context_bulk_insert_raw(session, fts_items)
-                        await session.commit()
-
-                    embed_items = [
-                        (cs, ctx)
-                        for cs, ctx in zip(chunk_snapshots, contexts, strict=False)
-                        if ctx is not None
-                    ]
-                    if not embed_items:
-                        progress.console.print(
-                            f"  [yellow]⚠[/yellow] {doc_name}: all LLM calls failed, skipping re-embed"  # noqa: E501
-                        )
-                        failed_total += n_chunks
-                        progress.advance(doc_task)
-                        continue
-
-                    embed_texts = [
-                        ctx + "\n\n" + cs["content"] for cs, ctx in embed_items
-                    ]
-                    try:
-                        vectors = await embedder.embed_batch(embed_texts)
-                    except Exception as exc:
-                        progress.console.print(
-                            f"  [red]✗[/red] {doc_name}: embedding failed ({exc})"
-                        )
-                        failed_total += len(embed_items)
-                        progress.advance(doc_task)
-                        continue
-
-                    from datetime import datetime
-
-                    now_iso = datetime.now(UTC).isoformat()
-                    points = [
-                        PointStruct(
-                            id=str(cs["chunk_id"]),
-                            vector=vector,
-                            payload={
-                                "document_id": doc_id_str,
-                                "chunk_index": cs["chunk_index"],
-                                "tags": cs["tags"],
-                                "created_at": now_iso,
-                            },
-                        )
-                        for (cs, _ctx), vector in zip(embed_items, vectors, strict=False)
-                    ]
-
-                    try:
-                        await qdrant.upsert(points)
-                    except Exception as exc:
-                        progress.console.print(
-                            f"  [red]✗[/red] {doc_name}: Qdrant upsert failed ({exc})"
-                        )
-                        failed_total += len(embed_items)
-                        progress.advance(doc_task)
-                        continue
-
-                    # Mark SYNCED + context_embedded=True
-                    from sqlalchemy import update as sa_update
-
-                    from app.core.models import Chunk
-
-                    embed_chunk_ids = [cs["chunk_id"] for cs, _ in embed_items]
-                    await session.execute(
-                        sa_update(Chunk)
-                        .where(Chunk.chunk_id.in_(embed_chunk_ids))
-                        .values(
-                            sync_status=SyncStatus.SYNCED,
-                            context_embedded=True,
-                        )
+                # Build chunk_updates from LLM-generated contexts
+                chunk_updates = [
+                    {
+                        "chunk_id": cs["chunk_id"],
+                        "content": cs["content"],
+                        "chunk_index": cs["chunk_index"],
+                        "tags": cs["tags"],
+                        "context": ctx,
+                    }
+                    for cs, ctx in zip(chunk_snapshots, contexts, strict=False)
+                    if ctx is not None
+                ]
+                if not chunk_updates:
+                    progress.console.print(
+                        f"  [yellow]⚠[/yellow] {doc_name}: all LLM calls failed, skipping re-embed"  # noqa: E501
                     )
-                    await session.commit()
+                    failed_total += n_chunks
+                    progress.advance(doc_task)
+                    continue
 
-                    succeeded_total += len(embed_items)
-                    skipped = n_chunks - len(embed_items)
-                    if skipped:
-                        failed_total += skipped
+                async with session_factory() as session:
+                    try:
+                        succeeded_count = await ChunkManager.contextualize_chunks(
+                            session, qdrant, embedder, doc_id_str, chunk_updates
+                        )
+                    except Exception as exc:
+                        progress.console.print(
+                            f"  [red]✗[/red] {doc_name}: contextualize failed ({exc})"
+                        )
+                        failed_total += len(chunk_updates)
+                        progress.advance(doc_task)
+                        continue
+
+                succeeded_total += succeeded_count
+                skipped = n_chunks - succeeded_count
+                if skipped:
+                    failed_total += skipped
 
                 progress.console.print(
                     f"  [green]✓[/green] {doc_name}  "
-                    f"{len(embed_items)}/{n_chunks} chunks contextualized"
+                    f"{succeeded_count}/{n_chunks} chunks contextualized"
                 )
                 progress.advance(doc_task)
 

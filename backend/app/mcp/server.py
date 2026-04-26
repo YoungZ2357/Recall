@@ -7,17 +7,12 @@ Run with:
 import json
 import logging
 from contextlib import asynccontextmanager
-from uuid import UUID
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from app.cli._init_deps import init_deps, teardown_deps
+from app.cli._init_deps import AppResources, init_deps, teardown_deps
 from app.config import settings
-from app.core.chunk_manager import ChunkManager
-from app.core.models import SyncStatus
-from app.core.pipeline_deps import PipelineDeps
-from app.core.repository import DocumentRepository
-from app.retrieval.pipeline import RetrievalPipeline
+from app.services import DocumentService
 
 logger = logging.getLogger(__name__)
 
@@ -30,36 +25,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(server: FastMCP):  # noqa: ARG001
     resources = await init_deps(settings)
     try:
-        yield {
-            "session_factory": resources.session_factory,
-            "qdrant": resources.qdrant_client,
-            "embedder": resources.embedder,
-            "generator": resources.generator,
-        }
+        yield resources
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
+        await teardown_deps(resources)
 
 
 mcp = FastMCP("Recall", lifespan=lifespan)
-
-
-# ---------------------------------------------------------------------------
-# Internal helper
-# ---------------------------------------------------------------------------
-
-def _build_pipeline(lc: dict) -> RetrievalPipeline:
-    """Construct a RetrievalPipeline from the lifespan context."""
-    from app.retrieval import workflows
-    deps = PipelineDeps(
-        embedder=lc["embedder"],
-        qdrant_client=lc["qdrant"],
-        session_factory=lc["session_factory"],
-    )
-    return RetrievalPipeline(
-        dag=workflows.build_from_settings(deps),
-        embedder=deps.embedder,
-        session_factory=deps.session_factory,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -84,12 +55,11 @@ async def search(
         JSON array of results. Each item contains chunk_id, document_title,
         content, final_score, retrieval_score, metadata_score, retention_score.
     """
-    lc = ctx.request_context.lifespan_context
-    pipeline = _build_pipeline(lc)
-    results = await pipeline.search(
+    resources: AppResources = ctx.request_context.lifespan_context
+    results = await resources.search_service.search(
         query_text=query,
         top_k=top_k,
-        retention_mode=mode,  # type: ignore[arg-type]
+        retention_mode=mode,
     )
     return json.dumps(
         [
@@ -126,18 +96,15 @@ async def generate(
     Returns:
         The generated answer text, or an error message if the LLM is not configured.
     """
-    lc = ctx.request_context.lifespan_context
-    generator = lc["generator"]
-    if generator is None:
+    resources: AppResources = ctx.request_context.lifespan_context
+    if resources.generation_service is None:
         return "Error: LLM generator not available. Set LLM_API_KEY to enable generation."
 
-    pipeline = _build_pipeline(lc)
-    results = await pipeline.search(
-        query_text=query,
+    results, response = await resources.generation_service.search_and_generate(
+        query=query,
         top_k=top_k,
-        retention_mode=mode,  # type: ignore[arg-type]
+        mode=mode,
     )
-    response = await generator.generate(query, results)
     return response.answer
 
 
@@ -149,11 +116,10 @@ async def list_documents(ctx: Context) -> str:
         JSON array of documents. Each item contains document_id, title,
         source_path, sync_status, and created_at (ISO 8601).
     """
-    lc = ctx.request_context.lifespan_context
-    session_factory = lc["session_factory"]
+    resources: AppResources = ctx.request_context.lifespan_context
 
-    async with session_factory() as session:
-        docs = await DocumentRepository.list_all(session)
+    async with resources.session_factory() as session:
+        docs = await DocumentService.list_all(session)
         payload = json.dumps(
             [
                 {
@@ -195,53 +161,41 @@ async def reindex(
         Plain-text summary of succeeded/failed counts and any errors.
     """
     lc = ctx.request_context.lifespan_context
-    session_factory = lc["session_factory"]
-    qdrant = lc["qdrant"]
-    embedder = lc["embedder"]
+    resources: AppResources = lc
+    svc = resources.reindex_service
 
-    async with session_factory() as session:
-        if doc_id is not None:
-            doc = await DocumentRepository.get_by_id(session, UUID(doc_id))
-            if doc is None:
-                return f"Error: document not found: {doc_id}"
-            docs = [doc]
-        elif reindex_all:
-            docs = await DocumentRepository.list_all(session)
-        else:
-            all_docs = await DocumentRepository.list_all(session)
-            docs = [
-                d for d in all_docs
-                if d.sync_status in (SyncStatus.DIRTY, SyncStatus.FAILED)
-            ]
+    if doc_id is not None:
+        try:
+            result = await svc.reindex_document(doc_id)
+        except Exception as exc:
+            logger.error("Failed to reindex document %s: %s", doc_id, exc)
+            return f"Reindex failed: {exc}"
 
-        if not docs:
-            return "No documents to reindex."
+        if result.health_check_passed:
+            return "Reindex complete: 1 succeeded, 0 failed."
 
-        succeeded = 0
-        failed = 0
-        errors: list[str] = []
+        lines = ["Reindex complete: 0 succeeded, 1 failed."]
+        lines.append("Errors:")
+        for err in result.errors:
+            lines.append(f"  - {err}")
+        return "\n".join(lines)
 
-        for doc in docs:
-            doc_id_str = str(doc.document_id)
-            label = doc.title or doc_id_str[:8]
-            try:
-                result = await ChunkManager.reindex_document(
-                    session, qdrant, embedder, doc_id_str
-                )
-                if result.health_check_passed:
-                    succeeded += 1
-                else:
-                    failed += 1
-                    errors.append(
-                        f"{label}: health check failed "
-                        f"({result.succeeded}/{result.total} chunks synced)"
-                    )
-                for err in result.errors:
-                    errors.append(f"{label}: {err}")
-            except Exception as exc:
-                failed += 1
-                logger.error("Failed to reindex document %s: %s", doc_id_str, exc)
-                errors.append(f"{label}: {exc}")
+    if reindex_all:
+        results = await svc.reindex_all()
+    else:
+        results = await svc.reindex_dirty()
+
+    if not results:
+        return "No documents to reindex."
+
+    succeeded = sum(1 for r in results if r.health_check_passed)
+    failed = sum(1 for r in results if not r.health_check_passed)
+    errors: list[str] = []
+    for r in results:
+        if not r.health_check_passed:
+            label = f"[{r.succeeded}/{r.total} chunks]"
+            errors.append(f"health check failed {label}")
+        errors.extend(r.errors)
 
     lines = [f"Reindex complete: {succeeded} succeeded, {failed} failed."]
     if errors:
