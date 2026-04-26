@@ -22,7 +22,7 @@ from app.core.exceptions import ConfigError
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.embedder import APIEmbedder
-from app.services import GenerationService, IngestionService, SearchService
+from app.services import GenerationService, IngestionService, ReindexService, SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ class AppResources(NamedTuple):
     search_service: SearchService
     generation_service: GenerationService | None
     ingestion_service: IngestionService
+    reindex_service: ReindexService
 
 
 async def init_deps(
@@ -97,9 +98,16 @@ async def init_deps(
         mineru_api_key=cfg.mineru_api_key,
     )
 
+    reindex_service = ReindexService(
+        session_factory=session_factory,
+        qdrant_client=qdrant,
+        embedder=embedder,
+    )
+
     return AppResources(
         session_factory, qdrant, embedder, generator,
         search_service, generation_service, ingestion_service,
+        reindex_service,
     )
 
 

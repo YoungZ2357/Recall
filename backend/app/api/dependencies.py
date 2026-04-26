@@ -10,7 +10,7 @@ from app.core.exceptions import ConfigError
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.embedder import APIEmbedder
-from app.services import GenerationService, IngestionService, SearchService
+from app.services import GenerationService, IngestionService, ReindexService, SearchService
 
 # --- Base resources (extracted from app.state) ---
 
@@ -74,6 +74,18 @@ def get_ingestion_service(
     )
 
 
+def get_reindex_service(
+    qdrant: Annotated[QdrantService, Depends(get_qdrant)],
+    embedder: Annotated[APIEmbedder, Depends(get_embedder)],
+    session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
+) -> ReindexService:
+    return ReindexService(
+        session_factory=session_factory,
+        qdrant_client=qdrant,
+        embedder=embedder,
+    )
+
+
 # --- Type aliases (for concise route annotations) ---
 
 QdrantDep = Annotated[QdrantService, Depends(get_qdrant)]
@@ -84,3 +96,4 @@ IngestionServiceDep = Annotated[IngestionService, Depends(get_ingestion_service)
 GeneratorDep = Annotated[LLMGenerator, Depends(get_generator)]
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
 GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]
+ReindexServiceDep = Annotated[ReindexService, Depends(get_reindex_service)]
