@@ -22,7 +22,7 @@ from app.core.exceptions import ConfigError
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.embedder import APIEmbedder
-from app.services import GenerationService, SearchService
+from app.services import GenerationService, IngestionService, SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ class AppResources(NamedTuple):
     generator: LLMGenerator | None
     search_service: SearchService
     generation_service: GenerationService | None
+    ingestion_service: IngestionService
 
 
 async def init_deps(
@@ -88,9 +89,17 @@ async def init_deps(
     if generator is not None:
         generation_service = GenerationService(search_service, generator)
 
+    ingestion_service = IngestionService(
+        session_factory=session_factory,
+        qdrant_client=qdrant,
+        embedder=embedder,
+        generator=generator,
+        mineru_api_key=cfg.mineru_api_key,
+    )
+
     return AppResources(
         session_factory, qdrant, embedder, generator,
-        search_service, generation_service,
+        search_service, generation_service, ingestion_service,
     )
 
 

@@ -9,11 +9,8 @@ from app.core.database import get_session
 from app.core.exceptions import ConfigError
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
-from app.ingestion.chunker import RecursiveSplitStrategy
 from app.ingestion.embedder import APIEmbedder
-from app.ingestion.parser import get_parser
-from app.ingestion.pipeline import IngestionPipeline
-from app.services import GenerationService, SearchService
+from app.services import GenerationService, IngestionService, SearchService
 
 # --- Base resources (extracted from app.state) ---
 
@@ -65,17 +62,15 @@ def get_generation_service(
     return GenerationService(search_service, generator)
 
 
-def get_ingestion_pipeline(
+def get_ingestion_service(
     qdrant: Annotated[QdrantService, Depends(get_qdrant)],
     embedder: Annotated[APIEmbedder, Depends(get_embedder)],
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
-) -> IngestionPipeline:
-    return IngestionPipeline(
-        parser_factory=get_parser,
-        chunker=RecursiveSplitStrategy(),
-        embedder=embedder,
+) -> IngestionService:
+    return IngestionService(
         session_factory=session_factory,
-        qdrant_service=qdrant,
+        qdrant_client=qdrant,
+        embedder=embedder,
     )
 
 
@@ -85,7 +80,7 @@ QdrantDep = Annotated[QdrantService, Depends(get_qdrant)]
 EmbedderDep = Annotated[APIEmbedder, Depends(get_embedder)]
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
-IngestionPipelineDep = Annotated[IngestionPipeline, Depends(get_ingestion_pipeline)]
+IngestionServiceDep = Annotated[IngestionService, Depends(get_ingestion_service)]
 GeneratorDep = Annotated[LLMGenerator, Depends(get_generator)]
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
 GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]

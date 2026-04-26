@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.dependencies import (
-    IngestionPipelineDep,
+    IngestionServiceDep,
     QdrantDep,
     SessionDep,
     SettingsDep,
@@ -132,7 +132,7 @@ async def get_document(
 async def upload_document(
     file: FastAPIFile,
     settings: SettingsDep,
-    pipeline: IngestionPipelineDep,
+    ingestion_service: IngestionServiceDep,
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
 ) -> UploadResponse:
     ext = FilePath(file.filename or "").suffix.lower()
@@ -162,7 +162,7 @@ async def upload_document(
         )
 
     try:
-        doc = await pipeline.ingest(dest_path)
+        doc = await ingestion_service.ingest_file(dest_path)
     except Exception:
         if await asyncio.to_thread(lambda: dest_path.exists()):
             await asyncio.to_thread(lambda: dest_path.unlink())

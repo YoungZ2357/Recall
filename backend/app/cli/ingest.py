@@ -13,9 +13,9 @@ from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from app.cli._init_deps import init_deps, teardown_deps
-from app.ingestion.chunker import get_chunker
-from app.ingestion.parser import BaseParser, _parser_registry, get_parser
-from app.ingestion.pipeline import FailedIngest, IngestionPipeline
+from app.ingestion.parser import _parser_registry
+from app.ingestion.pipeline import FailedIngest
+from app.services import IngestionService
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -108,42 +108,22 @@ async def _run_ingest(
                 else:
                     console.print("[dim]Context generation skipped by user.[/dim]")
 
-        # Build parser factory
-        if pdf_parser == "marker":
-            from app.ingestion.parsers.pdf import MarkerCliParser
-            def parser_factory(p: Path) -> BaseParser:
-                return MarkerCliParser() if p.suffix.lower() == ".pdf" else get_parser(p)
-        elif pdf_parser == "mineru":
-            from app.ingestion.parsers.pdf_mineru import MinerUParser
-            def parser_factory(p: Path) -> BaseParser:
-                return (
-                    MinerUParser(api_key=settings.mineru_api_key)
-                    if p.suffix.lower() == ".pdf"
-                    else get_parser(p)
-                )
-        else:
-            parser_factory = get_parser
-
-        kwargs = {}
-        if strategy == "recursive":
-            kwargs = {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
-
-        chunker = get_chunker(strategy, **kwargs)
-        pipeline = IngestionPipeline(
-            parser_factory=parser_factory,
-            chunker=chunker,
-            embedder=resources.embedder,
-            session_factory=resources.session_factory,
-            qdrant_service=resources.qdrant_client,
-            tagger=tagger,
-            contextualizer=contextualizer,
-            strip_tail=strip_tail,
-            strip_markdown=strip_markdown,
-        )
-
         filtering_active = strip_markdown or strip_tail
         if await asyncio.to_thread(lambda: path.is_file()):  # noqa: ASYNC240
-            await _ingest_single(pipeline, path, contextualizer, filtering_active)
+            await _ingest_single(
+                resources.ingestion_service, path,
+                pdf_parser=pdf_parser,
+                strategy=strategy,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                contextualize=bool(contextualizer),
+                contextualizer=contextualizer,
+                tagger=tagger,
+                strip_tail=strip_tail,
+                strip_markdown=strip_markdown,
+                contextualizer_present=contextualizer is not None,
+                filtering_active=filtering_active,
+            )
 
         elif await asyncio.to_thread(lambda: path.is_dir()):  # noqa: ASYNC240
             supported_exts = set(_parser_registry.keys())
@@ -162,7 +142,21 @@ async def _run_ingest(
                 )
                 return
 
-            await _ingest_batch(pipeline, files, contextualizer, filtering_active, concurrency)
+            await _ingest_batch(
+                resources.ingestion_service, files,
+                pdf_parser=pdf_parser,
+                strategy=strategy,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                contextualize=bool(contextualizer),
+                contextualizer=contextualizer,
+                tagger=tagger,
+                strip_tail=strip_tail,
+                strip_markdown=strip_markdown,
+                contextualizer_present=contextualizer is not None,
+                filtering_active=filtering_active,
+                concurrency=concurrency,
+            )
 
         else:
             console.print(f"[red]Path not found: {path}[/red]")
@@ -173,15 +167,25 @@ async def _run_ingest(
 
 
 async def _ingest_single(
-    pipeline: IngestionPipeline,
+    service: IngestionService,
     path: Path,
+    *,
+    pdf_parser: str,
+    strategy: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    contextualize: bool,
     contextualizer: object | None,
-    filtering_active: bool = False,
+    tagger: object | None,
+    strip_tail: bool,
+    strip_markdown: bool,
+    contextualizer_present: bool,
+    filtering_active: bool,
 ) -> None:
     """Ingest a single file with per-stage step indicator."""
     # Base stages: Parse, Chunk, Embed, Write = 4
     # +1 for Contextualize, +1 for Filter
-    total_stages = 4 + (1 if contextualizer is not None else 0) + (1 if filtering_active else 0)
+    total_stages = 4 + (1 if contextualizer_present else 0) + (1 if filtering_active else 0)
     stage_num = [0]
 
     with Progress(
@@ -200,30 +204,51 @@ async def _ingest_single(
             )
 
         def on_chunk_count(n: int) -> None:
-            eta = f", est. {n * 8}s" if contextualizer is not None else ""
-            progress.console.print(f"  [dim]→ {n} chunks{eta}[/dim]")
+            eta = f", est. {n * 8}s" if contextualizer_present else ""
+            progress.console.print(f"  [dim]\u2192 {n} chunks{eta}[/dim]")
 
         try:
-            doc = await pipeline.ingest(
-                path, stage_callback=on_stage, on_chunk_count=on_chunk_count,
+            doc = await service.ingest_file(
+                path,
+                pdf_parser=pdf_parser,
+                strategy=strategy,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                contextualize=contextualize,
+                contextualizer=contextualizer,  # type: ignore[arg-type]
+                tagger=tagger,  # type: ignore[arg-type]
+                strip_tail=strip_tail,
+                strip_markdown=strip_markdown,
+                stage_callback=on_stage,
+                on_chunk_count=on_chunk_count,
             )
         except Exception as exc:
-            console.print(f"[red]✗[/red] {path.name}: {exc}")
+            console.print(f"[red]\u2717[/red] {path.name}: {exc}")
             raise typer.Exit(1) from exc
 
-    filter_suffix = _filter_suffix(pipeline, filtering_active)
+    filter_suffix = _filter_suffix(service, filtering_active)
     console.print(
-        f"[green]✓[/green] {path.name} → "
+        f"[green]\u2713[/green] {path.name} \u2192 "
         f"doc_id={doc.document_id}, status={doc.sync_status.value}"
         f"{filter_suffix}"
     )
 
 
 async def _ingest_batch(
-    pipeline: IngestionPipeline,
+    service: IngestionService,
     files: list[Path],
+    *,
+    pdf_parser: str,
+    strategy: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    contextualize: bool,
     contextualizer: object | None,
-    filtering_active: bool = False,
+    tagger: object | None,
+    strip_tail: bool,
+    strip_markdown: bool,
+    contextualizer_present: bool,
+    filtering_active: bool,
     concurrency: int = 1,
 ) -> None:
     """Ingest multiple files with a progress bar.
@@ -232,7 +257,7 @@ async def _ingest_batch(
     concurrency>1 runs up to N documents simultaneously; each active document
     gets its own progress row showing the current pipeline stage.
     """
-    total_stages = 4 + (1 if contextualizer is not None else 0) + (1 if filtering_active else 0)
+    total_stages = 4 + (1 if contextualizer_present else 0) + (1 if filtering_active else 0)
     succeeded: list = []
     failed: list[FailedIngest] = []
 
@@ -264,33 +289,42 @@ async def _ingest_batch(
 
                 def make_on_chunk_count(captured: Path) -> object:
                     def on_chunk_count(n: int) -> None:
-                        eta = f", est. {n * 8}s" if contextualizer is not None else ""
-                        progress.console.print(f"  [dim]{captured.name} → {n} chunks{eta}[/dim]")
+                        eta = f", est. {n * 8}s" if contextualizer_present else ""
+                        progress.console.print(f"  [dim]{captured.name} \u2192 {n} chunks{eta}[/dim]")  # noqa: E501
                     return on_chunk_count
 
                 t0 = time.monotonic()
                 try:
-                    doc = await pipeline.ingest(
+                    doc = await service.ingest_file(
                         path,
+                        pdf_parser=pdf_parser,
+                        strategy=strategy,
+                        chunk_size=chunk_size,
+                        chunk_overlap=chunk_overlap,
+                        contextualize=contextualize,
+                        contextualizer=contextualizer,  # type: ignore[arg-type]
+                        tagger=tagger,  # type: ignore[arg-type]
+                        strip_tail=strip_tail,
+                        strip_markdown=strip_markdown,
                         stage_callback=make_on_stage(path, stage_num),
                         on_chunk_count=make_on_chunk_count(path),
                     )
                     elapsed = time.monotonic() - t0
-                    filter_suffix = _filter_suffix(pipeline, filtering_active)
+                    filter_suffix = _filter_suffix(service, filtering_active)
                     succeeded.append(doc)
-                    progress.console.print(f"  [green]✓[/green] {path.name}  ({elapsed:.1f}s){filter_suffix}")  # noqa: E501
+                    progress.console.print(f"  [green]\u2713[/green] {path.name}  ({elapsed:.1f}s){filter_suffix}")  # noqa: E501
                 except Exception as exc:
                     elapsed = time.monotonic() - t0
                     logger.warning("Failed to ingest %s: %s", path, exc)
                     failed.append(FailedIngest(file_path=path, error=str(exc)))
-                    progress.console.print(f"  [red]✗[/red] {path.name}: {exc}")
+                    progress.console.print(f"  [red]\u2717[/red] {path.name}: {exc}")
 
                 progress.advance(overall)
                 progress.update(overall, description="Ingesting")
 
     else:
         # ── Concurrent path ────────────────────────────────────────────────
-        # Each active document occupies its own progress row. pipeline.last_filter_result
+        # Each active document occupies its own progress row. service.last_filter_result
         # is a shared instance attribute and is unreliable under concurrency, so
         # filter suffix is intentionally omitted here.
         semaphore = asyncio.Semaphore(concurrency)
@@ -328,15 +362,27 @@ async def _ingest_batch(
 
                     t0 = time.monotonic()
                     try:
-                        doc = await pipeline.ingest(path, stage_callback=on_stage)
+                        doc = await service.ingest_file(
+                            path,
+                            pdf_parser=pdf_parser,
+                            strategy=strategy,
+                            chunk_size=chunk_size,
+                            chunk_overlap=chunk_overlap,
+                            contextualize=contextualize,
+                            contextualizer=contextualizer,  # type: ignore[arg-type]
+                            tagger=tagger,  # type: ignore[arg-type]
+                            strip_tail=strip_tail,
+                            strip_markdown=strip_markdown,
+                            stage_callback=on_stage,
+                        )
                         elapsed = time.monotonic() - t0
                         succeeded.append(doc)
-                        progress.console.print(f"  [green]✓[/green] {path.name}  ({elapsed:.1f}s)")
+                        progress.console.print(f"  [green]\u2713[/green] {path.name}  ({elapsed:.1f}s)")  # noqa: E501
                     except Exception as exc:
                         elapsed = time.monotonic() - t0
                         logger.warning("Failed to ingest %s: %s", path, exc)
                         failed.append(FailedIngest(file_path=path, error=str(exc)))
-                        progress.console.print(f"  [red]✗[/red] {path.name}: {exc}")
+                        progress.console.print(f"  [red]\u2717[/red] {path.name}: {exc}")
                     finally:
                         progress.update(file_task, visible=False)
                         progress.advance(overall)
@@ -353,14 +399,14 @@ async def _ingest_batch(
     )
     if failed:
         for f in failed:
-            console.print(f"  [red]✗[/red] {f.file_path.name}: {f.error}")
+            console.print(f"  [red]\u2717[/red] {f.file_path.name}: {f.error}")
 
 
-def _filter_suffix(pipeline: IngestionPipeline, filtering_active: bool) -> str:
+def _filter_suffix(service: IngestionService, filtering_active: bool) -> str:
     """Build the filter-result suffix string for sequential ingest output."""
-    if not filtering_active or pipeline.last_filter_result is None:
+    if not filtering_active or service.last_filter_result is None:
         return ""
-    fr = pipeline.last_filter_result
+    fr = service.last_filter_result
     if fr.cut_point is not None:
         return f", stripped {fr.removed_chars:,} chars ({fr.cut_reason})"
     return ", no tail detected"
