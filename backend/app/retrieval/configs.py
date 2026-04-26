@@ -39,3 +39,24 @@ class RerankerConfig(BaseModel, frozen=True):
 
 class RRFMergerConfig(BaseModel, frozen=True):
     k: int = 60
+
+
+# ---------------------------------------------------------------------------
+# Query transform configs
+# ---------------------------------------------------------------------------
+
+
+class RewriteTransformerConfig(BaseModel, frozen=True):
+    max_tokens: int = 256
+    temperature: float = 0.3  # deterministic rewriting
+
+
+class RAGFusionTransformerConfig(BaseModel, frozen=True):
+    num_variants: int = 4
+    max_tokens: int = 512
+    temperature: float = 0.7  # diversity for variant generation
+
+
+class HyDeTransformerConfig(BaseModel, frozen=True):
+    max_tokens: int = 512
+    temperature: float = 0.5

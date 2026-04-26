@@ -16,7 +16,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         env_prefix="",
-        populate_by_name=True
+        populate_by_name=True,
+        extra="ignore",
     )
 
     # SQLite
