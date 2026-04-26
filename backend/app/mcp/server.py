@@ -15,9 +15,8 @@ from app.cli._init_deps import init_deps, teardown_deps
 from app.config import settings
 from app.core.chunk_manager import ChunkManager
 from app.core.models import SyncStatus
-from app.core.pipeline_deps import PipelineDeps
 from app.core.repository import DocumentRepository
-from app.retrieval.pipeline import RetrievalPipeline
+from app.services import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -44,25 +43,6 @@ mcp = FastMCP("Recall", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
-# Internal helper
-# ---------------------------------------------------------------------------
-
-def _build_pipeline(lc: dict) -> RetrievalPipeline:
-    """Construct a RetrievalPipeline from the lifespan context."""
-    from app.retrieval import workflows
-    deps = PipelineDeps(
-        embedder=lc["embedder"],
-        qdrant_client=lc["qdrant"],
-        session_factory=lc["session_factory"],
-    )
-    return RetrievalPipeline(
-        dag=workflows.build_from_settings(deps),
-        embedder=deps.embedder,
-        session_factory=deps.session_factory,
-    )
-
-
-# ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
 
@@ -85,11 +65,15 @@ async def search(
         content, final_score, retrieval_score, metadata_score, retention_score.
     """
     lc = ctx.request_context.lifespan_context
-    pipeline = _build_pipeline(lc)
-    results = await pipeline.search(
+    search_service = SearchService(
+        embedder=lc["embedder"],
+        qdrant_client=lc["qdrant"],
+        session_factory=lc["session_factory"],
+    )
+    results = await search_service.search(
         query_text=query,
         top_k=top_k,
-        retention_mode=mode,  # type: ignore[arg-type]
+        retention_mode=mode,
     )
     return json.dumps(
         [
@@ -131,11 +115,15 @@ async def generate(
     if generator is None:
         return "Error: LLM generator not available. Set LLM_API_KEY to enable generation."
 
-    pipeline = _build_pipeline(lc)
-    results = await pipeline.search(
+    search_service = SearchService(
+        embedder=lc["embedder"],
+        qdrant_client=lc["qdrant"],
+        session_factory=lc["session_factory"],
+    )
+    results = await search_service.search(
         query_text=query,
         top_k=top_k,
-        retention_mode=mode,  # type: ignore[arg-type]
+        retention_mode=mode,
     )
     response = await generator.generate(query, results)
     return response.answer

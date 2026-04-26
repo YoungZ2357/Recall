@@ -202,11 +202,9 @@ async def _run_eval(
     output_path: str,
     mode: str,
 ) -> None:
-    from app.core.pipeline_deps import PipelineDeps
     from app.evaluation.runner import run_evaluation
     from app.evaluation.schemas import TestSetEntry
-    from app.retrieval import workflows
-    from app.retrieval.pipeline import RetrievalPipeline
+    from app.services import SearchService
 
     # Load test set
     path = Path(test_set_path)
@@ -220,15 +218,10 @@ async def _run_eval(
 
     resources = await init_deps()
     try:
-        deps = PipelineDeps(
+        search_service = SearchService(
             embedder=resources.embedder,
             qdrant_client=resources.qdrant_client,
             session_factory=resources.session_factory,
-        )
-        pipeline = RetrievalPipeline(
-            dag=workflows.build_from_settings(deps),
-            embedder=deps.embedder,
-            session_factory=deps.session_factory,
         )
 
         with Progress(
@@ -244,7 +237,7 @@ async def _run_eval(
                 progress.update(eval_task, completed=current)
 
             report = await run_evaluation(
-                pipeline,
+                search_service.pipeline,
                 test_set,
                 top_k=top_k,
                 retention_mode=mode,  # type: ignore[arg-type]

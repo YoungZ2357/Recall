@@ -49,9 +49,7 @@ async def _run_generate(
     stream: bool,
 ) -> None:
     from app.config import settings
-    from app.core.pipeline_deps import PipelineDeps
-    from app.retrieval import workflows
-    from app.retrieval.pipeline import RetrievalPipeline
+    from app.services import SearchService
 
     resources = await init_deps()
     try:
@@ -63,21 +61,16 @@ async def _run_generate(
             raise typer.Exit(code=1)
 
         generator = resources.generator
-        deps = PipelineDeps(
+        search_service = SearchService(
             embedder=resources.embedder,
             qdrant_client=resources.qdrant_client,
             session_factory=resources.session_factory,
         )
-        pipeline = RetrievalPipeline(
-            dag=workflows.build_from_settings(deps),
-            embedder=deps.embedder,
-            session_factory=deps.session_factory,
-        )
 
-        results = await pipeline.search(
+        results = await search_service.search(
             query_text=query,
             top_k=top_k,
-            retention_mode=mode,  # type: ignore[arg-type]
+            retention_mode=mode,
         )
 
         if not results:
@@ -114,7 +107,7 @@ async def _run_generate(
                         print(delta, end="", flush=True)
                     except json.JSONDecodeError:
                         pass
-            print()  # trailing newline after stream
+            print()
         else:
             response = await generator.generate(query, results, gen_mode=gen_mode)
             console.print(
