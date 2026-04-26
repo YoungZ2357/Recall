@@ -354,8 +354,8 @@ class QueryDispatcher:
         self,
         queries: list[TransformedQuery],
         original_context: PipelineContext,
-        pipeline: object,  # RetrievalPipeline (pipeline.py) — typed as object to avoid circular import
-        embedder: object,  # BaseEmbedder — typed as object to avoid circular import
+        pipeline: object,  # RetrievalPipeline — object to avoid circular import
+        embedder: object,  # BaseEmbedder — object to avoid circular import
     ) -> list[SearchHit]:
         del queries, original_context, pipeline, embedder
         raise NotImplementedError(

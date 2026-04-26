@@ -19,6 +19,7 @@ from app.retrieval import workflows
 from app.retrieval.engine import instantiate
 from app.retrieval.graph import inject_normalizers, validate
 from app.retrieval.pipeline import RetrievalPipeline
+from app.retrieval.query_transform import BaseQueryTransformer
 from app.retrieval.topology import TopologySpecJSON, resolve_topology
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ class SearchService:
         topology_spec: TopologySpecJSON | None = None,
         topology_session: AsyncSession | None = None,
         default_topology_name: str = "default",
+        transformer: BaseQueryTransformer | None = None,
     ) -> list[RetrievalResult]:
         """Execute retrieval end-to-end.
 
@@ -101,6 +103,16 @@ class SearchService:
 
         Delegates to `RetrievalPipeline.search()`.
         """
+        if transformer is not None:
+            variants = await transformer.transform(query_text)
+            original = query_text
+            for v in variants:
+                if v.route == "direct":
+                    query_text = v.text
+                    break
+            else:
+                query_text = original
+
         if topology_spec and topology_session:
             pipeline = await self._build_pipeline_with_topology(
                 topology_spec, topology_session, default_topology_name,
