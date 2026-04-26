@@ -285,4 +285,4 @@ async def _run_eval(
             console.print(f"Report written to [cyan]{out}[/cyan]")
 
     finally:
-        await teardown_deps(resources.qdrant_client, resources.embedder, resources.generator)
+        await teardown_deps(resources)

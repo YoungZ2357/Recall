@@ -23,6 +23,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.qdrant = resources.qdrant_client
     app.state.embedder = resources.embedder
     app.state.generator = resources.generator
+    app.state.ingestion_service = resources.ingestion_service
+    app.state.reindex_service = resources.reindex_service
 
     # Seed builtin topology configs
     async with resources.session_factory() as session:
