@@ -67,7 +67,7 @@ class Reranker(BaseReranker):
         if not hits:
             return []
 
-        query_embedding = context.query_embedding
+        query_embedding = context.rerank_query_embedding or context.query_embedding
         retention_mode = context.retention_mode
         chunk_ids = [UUID(h.chunk_id) for h in hits]
 

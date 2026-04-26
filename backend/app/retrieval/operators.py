@@ -44,6 +44,30 @@ class SearchHit:
     retention_score: float | None = None
 
 
+# ---------------------------------------------------------------------------
+# Query transform routing types
+# ---------------------------------------------------------------------------
+
+QueryRoute = Literal["direct", "fusion", "hyde"]
+
+
+@dataclass
+class TransformedQuery:
+    """Variant produced by a query transformer, carrying a route marker.
+
+    Attributes:
+        text: Variant text. For hyde route this is the original query
+              (used for logging/debugging only; retrieval uses embedding).
+        route: Dispatch marker — "direct" / "fusion" / "hyde".
+        embedding: Pre-computed vector when available (hyde only).
+                   None means the Dispatcher is responsible for embedding.
+    """
+
+    text: str
+    route: QueryRoute
+    embedding: list[float] | None = None
+
+
 @dataclass
 class PipelineContext:
     """Per-query state flowing through the pipeline."""
@@ -54,6 +78,8 @@ class PipelineContext:
     retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent"
     top_k: int = 10
     filters: dict[str, Any] | None = None
+    rerank_query_text: str | None = None
+    rerank_query_embedding: list[float] | None = None
 
 
 # ---------------------------------------------------------------------------
