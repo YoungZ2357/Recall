@@ -194,3 +194,7 @@ backend/nul
 docs/validate_dag.md
 --no-banner
 pausedmission.md
+docs/service_layer_assessment.md
+docs/service_migration_plan.md
+docs/tech_debt_todo.md
+.opencode/
