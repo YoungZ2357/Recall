@@ -13,7 +13,7 @@ from typing import Any
 from app.core.pipeline_deps import PipelineDeps
 from app.retrieval.graph import GraphSpec, Normalizer
 from app.retrieval.operators import NodeType, PipelineContext, SearchHit
-from app.retrieval.searcher import normalize_scores
+from app.retrieval.scoring import normalize_scores
 
 
 class RetrievalPipeline:

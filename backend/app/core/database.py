@@ -72,7 +72,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 async def dispose_engine() -> None:
     """Dispose the engine and reset internal state.
-    
+
     This should be called during application shutdown.
     """
     global _engine, _session_factory
@@ -91,7 +91,7 @@ async def dispose_engine() -> None:
 @asynccontextmanager
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     """Async context manager for database sessions.
-    
+
     Usage:
         async with get_async_session() as session:
             await session.execute(...)
@@ -104,14 +104,14 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
         except SQLAlchemyError as e:
             await session.rollback()
             raise DatabaseError(detail=str(e)) from e
-        except Exception as e:
+        except Exception:
             await session.rollback()
             raise
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency-compatible session generator.
-    
+
     Usage in FastAPI:
         @app.get("/")
         async def endpoint(session: AsyncSession = Depends(get_session)):
@@ -125,14 +125,14 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         except SQLAlchemyError as e:
             await session.rollback()
             raise DatabaseError(detail=str(e)) from e
-        except Exception as e:
+        except Exception:
             await session.rollback()
             raise
 
 
 async def create_tables() -> None:
     """Create all tables defined in Base metadata.
-    
+
     This should be called once during application startup.
     """
     try:

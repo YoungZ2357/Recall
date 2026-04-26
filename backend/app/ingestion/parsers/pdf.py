@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from app.core.exceptions import ParsingError
-from app.ingestion.parser import BaseParser, ParseResult, register_parser
+from app.ingestion.parser import BaseParser, ParseResult
 
 _MARKER_TIMEOUT_S = 300
 

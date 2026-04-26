@@ -1,14 +1,26 @@
 from datetime import UTC, datetime
+from enum import StrEnum
 from uuid import UUID as PyUUID
-from enum import Enum
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import text
 
 from .database import Base
 
-class SyncStatus(str, Enum):
+
+class SyncStatus(StrEnum):
     PENDING = "pending"
     SYNCED = "synced"
     DIRTY = "dirty"
@@ -115,4 +127,19 @@ class ChunkAccess(Base):
         server_default=text("CURRENT_TIMESTAMP"),
         nullable=False,
         index=True,
+    )
+
+
+class TopologyConfig(Base):
+    __tablename__ = "topology_configs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    spec_json: Mapped[str] = mapped_column(Text, nullable=False)
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        nullable=False,
     )

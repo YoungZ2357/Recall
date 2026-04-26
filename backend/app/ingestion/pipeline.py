@@ -32,7 +32,11 @@ from app.core.repository import DocumentRepository
 from app.core.schemas import ChunkIngest, DocumentCreate
 from app.core.vectordb import QdrantService
 from app.ingestion.chunker import BaseChunker
-from app.ingestion.content_filter import ContentFilterResult, content_filter, strip_markdown_sections
+from app.ingestion.content_filter import (
+    ContentFilterResult,
+    content_filter,
+    strip_markdown_sections,
+)
 from app.ingestion.contextualizer import ContextGenerator
 from app.ingestion.embedder import BaseEmbedder
 from app.ingestion.parser import BaseParser
@@ -172,7 +176,7 @@ class IngestionPipeline:
             stage_callback("Embedding")
         embed_texts = [
             ctx + "\n\n" + c.content if ctx else c.content
-            for ctx, c in zip(contexts, chunks)
+            for ctx, c in zip(contexts, chunks, strict=False)
         ]
         embeddings = await self._embedder.embed_batch(embed_texts)
         if len(embeddings) != len(chunks):

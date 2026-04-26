@@ -1,0 +1,29 @@
+{
+    "hooks": {
+        "PreToolUse": [
+            {
+                "matcher": "Read|Write|Edit|MultiEdit|Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File .claude/hooks/run-pre.ps1",
+                        "timeout": 15
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "powershell -ExecutionPolicy Bypass -NoProfile -File .claude/hooks/run-stop.ps1",
+                        "timeout": 60,
+                        "statusMessage": "Scanning for secrets with Gitleaks..."
+                    }
+                ]
+            }
+        ]
+    },
+    "autoMemoryEnabled": true
+}

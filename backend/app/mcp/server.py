@@ -56,7 +56,7 @@ def _build_pipeline(lc: dict) -> RetrievalPipeline:
         session_factory=lc["session_factory"],
     )
     return RetrievalPipeline(
-        dag=workflows.hybrid(deps),
+        dag=workflows.build_from_settings(deps),
         embedder=deps.embedder,
         session_factory=deps.session_factory,
     )

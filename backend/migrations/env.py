@@ -1,19 +1,19 @@
 import asyncio
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from alembic import context
-
-# Import Base so Alembic can detect model changes for autogenerate.
-# Import all models to ensure they are registered on Base.metadata.
-from app.core.database import Base
 import app.core.models  # noqa: F401 — registers ORM models on Base.metadata
 
 # Import settings to build the database URL at runtime.
 from app.config import settings
+
+# Import Base so Alembic can detect model changes for autogenerate.
+# Import all models to ensure they are registered on Base.metadata.
+from app.core.database import Base
 
 # Alembic Config object — provides access to values in alembic.ini.
 config = context.config

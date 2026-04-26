@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
-from typing import Annotated
 
 from app.cli._init_deps import init_deps, teardown_deps
 
@@ -57,11 +57,11 @@ async def _run_retag(yes: bool) -> None:
                     doc_map[doc_id] = doc.title or str(doc_id)
 
         console.print(f"Found [bold]{len(untagged_ids)}[/bold] untagged document(s):")
-        for doc_id, title in doc_map.items():
+        for _doc_id, title in doc_map.items():
             console.print(f"  [dim]{title}[/dim]")
 
         if not yes:
-            if not typer.confirm(f"\nRun auto-tagger on {len(untagged_ids)} document(s)?", default=False):
+            if not typer.confirm(f"\nRun auto-tagger on {len(untagged_ids)} document(s)?", default=False):  # noqa: E501
                 console.print("[dim]Aborted by user.[/dim]")
                 return
 
@@ -85,7 +85,7 @@ async def _run_retag(yes: bool) -> None:
                     # Reconstruct document text from chunks in order
                     chunks = await ChunkRepository.list_by_document(session, doc_id)
                     if not chunks:
-                        progress.console.print(f"  [yellow]⚠[/yellow] {title}: no chunks found, skipping")
+                        progress.console.print(f"  [yellow]⚠[/yellow] {title}: no chunks found, skipping")  # noqa: E501
                         failed += 1
                         progress.advance(task)
                         continue
@@ -97,7 +97,7 @@ async def _run_retag(yes: bool) -> None:
                     tags = await tagger.tag(content, session)
 
                 if not tags:
-                    progress.console.print(f"  [yellow]⚠[/yellow] {title}: tagger returned no tags, skipping")
+                    progress.console.print(f"  [yellow]⚠[/yellow] {title}: tagger returned no tags, skipping")  # noqa: E501
                     failed += 1
                     progress.advance(task)
                     continue

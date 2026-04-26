@@ -1,5 +1,9 @@
-from pydantic import BaseModel, ConfigDict
+from typing import Literal
 from uuid import UUID as PyUUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.retrieval.topology import TopologySpecJSON
 
 
 class DocumentCreate(BaseModel):
@@ -12,9 +16,6 @@ class ChunkCreate(BaseModel):
     document_id: PyUUID
     chunk_index: int
     content: str
-    # embedding: list[float]
-
-    # model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class DocumentQuery(BaseModel):
@@ -23,7 +24,7 @@ class DocumentQuery(BaseModel):
 
 
 class ChunkQuery(BaseModel):
-    document_id: PyUUID | None = None  
+    document_id: PyUUID | None = None
     chunk_index: int | None = None
 
 
@@ -57,10 +58,10 @@ class RetrievalResult(BaseModel):
 class GenerateRequest(BaseModel):
     """POST /generate request body."""
     query: str
-    context: list[RetrievalResult]
-    max_tokens: int | None = None
-    temperature: float | None = None
+    top_k: int = 5
+    mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent"
     stream: bool = False
+    topology: TopologySpecJSON | None = None
 
 
 class GenerateResponse(BaseModel):
@@ -68,3 +69,87 @@ class GenerateResponse(BaseModel):
     answer: str
     model: str
     usage: dict[str, int] | None = None
+
+
+# ============================================================
+# Documents API schemas
+# ============================================================
+
+
+class DocumentSummary(BaseModel):
+    """GET /api/documents list item."""
+    doc_id: str
+    filename: str
+    file_type: str
+    chunk_count: int
+    created_at: str
+    weight: float
+    sync_status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentDetail(BaseModel):
+    """GET /api/documents/{doc_id} detail response."""
+    doc_id: str
+    filename: str
+    file_type: str
+    total_chunks: int
+    synced_chunks: int
+    tags: list[str]
+    created_at: str
+    weight: float
+    sync_status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UploadResponse(BaseModel):
+    """POST /api/documents/upload response."""
+    doc_id: str
+    filename: str
+    chunk_count: int
+    status: str
+
+
+class DeleteResponse(BaseModel):
+    """DELETE /api/documents/{doc_id} response."""
+    deleted: bool
+    doc_id: str
+
+
+# ============================================================
+# Search API schemas
+# ============================================================
+
+
+class SearchRequest(BaseModel):
+    """POST /api/search request body."""
+    query: str
+    top_k: int = Field(default=10, ge=1, le=50)
+    mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent"
+    topology: TopologySpecJSON | None = None
+
+
+class ScoreDetail(BaseModel):
+    retrieval_score: float
+    metadata_score: float
+    retention_score: float
+
+
+class SearchResultItem(BaseModel):
+    """Single search result in response."""
+    chunk_id: str
+    content: str
+    doc_id: str
+    filename: str
+    final_score: float
+    score_detail: ScoreDetail
+    tags: list[str]
+
+
+class SourceInfo(BaseModel):
+    """Chunk source metadata for SSE sources event."""
+    doc_id: str
+    filename: str
+    chunk_id: str

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Annotated, Optional
+from typing import Annotated
 from uuid import UUID
 
 import typer
@@ -25,7 +25,7 @@ reindex_app = typer.Typer(help="Re-embed documents after an embedding model chan
 @reindex_app.callback(invoke_without_command=True)
 def reindex(
     doc_id: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--doc-id", help="Reindex a specific document by UUID."),
     ] = None,
     force_all: Annotated[
@@ -46,9 +46,8 @@ def reindex(
     asyncio.run(_run_reindex(doc_id, force_all))
 
 
-async def _run_reindex(doc_id: Optional[str], force_all: bool) -> None:
+async def _run_reindex(doc_id: str | None, force_all: bool) -> None:
     from app.config import settings
-
     from app.core.database import get_async_session
 
     _, qdrant, embedder, _ = await init_deps(settings)

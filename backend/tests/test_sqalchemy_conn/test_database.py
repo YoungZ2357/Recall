@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -114,7 +113,7 @@ class TestDatabase:
         # Use get_session() as an async generator
         session_gen = database_module.get_session()
         session = await anext(session_gen)
-        
+
         try:
             assert isinstance(session, AsyncSession)
             # Test basic operation
@@ -149,10 +148,10 @@ class TestDatabase:
         # Get engine first time
         engine1 = database_module.get_engine()
         assert engine1 is not None
-        
+
         # Dispose engine
         await database_module.dispose_engine()
-        
+
         # Get engine again should create new instance
         engine2 = database_module.get_engine()
         assert engine2 is not None

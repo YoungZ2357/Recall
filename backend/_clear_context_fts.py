@@ -1,6 +1,9 @@
 import asyncio
-from app.core.database import get_engine
+
 from sqlalchemy import text
+
+from app.core.database import get_engine
+
 
 async def run():
     async with get_engine().begin() as conn:

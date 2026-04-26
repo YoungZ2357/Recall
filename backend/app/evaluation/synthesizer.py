@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 
 from app.evaluation.sampler import SampledChunk
 from app.evaluation.schemas import QueryMetadata, TestSetEntry
@@ -20,8 +20,8 @@ _SYSTEM_PROMPT = (
     "language questions whose answers can be found in the passage.\n\n"
 
     "SKIP RULES — return an empty JSON array [] if ANY of the following apply:\n"
-    "- The passage is a reference list, acknowledgements, table of contents, or author affiliations.\n"
-    "- The passage is predominantly formulas, tables, or figures with no surrounding explanatory prose.\n"
+    "- The passage is a reference list, acknowledgements, table of contents, or author affiliations.\n"  # noqa: E501
+    "- The passage is predominantly formulas, tables, or figures with no surrounding explanatory prose.\n"  # noqa: E501
     "- The passage is a fragmentary segment that does not convey a self-contained point or claim "
     "(e.g., a sentence split mid-thought, boilerplate headers, or formatting artifacts).\n\n"
 
@@ -55,7 +55,8 @@ def _build_user_message(
     if context:
         parts.append(f"Passage context (background):\n{context}\n")
     parts.append(
-        f"Based on the following passage from this article, generate {num_queries} diverse questions.\n\n"
+        f"Based on the following passage from this article, "
+        f"generate {num_queries} diverse questions.\n\n"
         f"Passage:\n{chunk_content}"
     )
     return "\n".join(parts)
@@ -67,7 +68,7 @@ def _parse_llm_response(raw: str, model_name: str) -> list[dict[str, str]]:
     if text.startswith("```"):
         # Strip ```json ... ``` fences
         lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
+        lines = [ln for ln in lines if not ln.strip().startswith("```")]
         text = "\n".join(lines).strip()
     return json.loads(text)
 
@@ -87,7 +88,12 @@ async def synthesize_queries(
     context = chunk.context if with_context else None
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": _build_user_message(chunk.content, num_queries, chunk.document_title, context)},
+        {
+            "role": "user",
+            "content": _build_user_message(
+                chunk.content, num_queries, chunk.document_title, context
+            ),
+        },
     ]
 
     entries: list[TestSetEntry] = []

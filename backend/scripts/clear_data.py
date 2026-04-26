@@ -1,12 +1,11 @@
 """Clear all data from Qdrant and delete the SQLite database."""
 import asyncio
 import os
-import sys
 
 from qdrant_client import AsyncQdrantClient
 
 
-async def clear_qdrant(host: str = "localhost", port: int = 6333, collection: str = "recall") -> None:
+async def clear_qdrant(host: str = "localhost", port: int = 6333, collection: str = "recall") -> None:  # noqa: E501
     client = AsyncQdrantClient(host=host, port=port)
     try:
         collections = await client.get_collections()

@@ -39,23 +39,27 @@ def generate_set(
         int, typer.Option("--concurrency", help="Max parallel LLM calls.")
     ] = 5,
     with_context: Annotated[
-        bool, typer.Option("--with-context", help="Prepend each chunk's context to the synthesis prompt.")
+        bool, typer.Option("--with-context", help="Prepend each chunk's context to the synthesis prompt.")  # noqa: E501
     ] = False,
     include_doc: Annotated[
-        list[str], typer.Option("--include-doc", help="Whitelist doc-id(s). Only these documents are sampled. Mutually exclusive with --exclude-doc and --auto-split.")
-    ] = [],
+        list[str], typer.Option("--include-doc", help="Whitelist doc-id(s). Only these documents are sampled. Mutually exclusive with --exclude-doc and --auto-split.")  # noqa: E501
+    ] = None,
     exclude_doc: Annotated[
-        list[str], typer.Option("--exclude-doc", help="Blacklist doc-id(s). These documents are skipped. Mutually exclusive with --include-doc and --auto-split.")
-    ] = [],
+        list[str], typer.Option("--exclude-doc", help="Blacklist doc-id(s). These documents are skipped. Mutually exclusive with --include-doc and --auto-split.")  # noqa: E501
+    ] = None,
     auto_split: Annotated[
-        float, typer.Option("--auto-split", help="Fraction (0-1) of documents to randomly select for sampling. Saves a split manifest JSON alongside the output. Mutually exclusive with --include-doc and --exclude-doc.")
+        float, typer.Option("--auto-split", help="Fraction (0-1) of documents to randomly select for sampling. Saves a split manifest JSON alongside the output. Mutually exclusive with --include-doc and --exclude-doc.")  # noqa: E501
     ] = 0.0,
 ) -> None:
     """Sample chunks and generate a synthetic evaluation test set via LLM."""
     # Validate mutual exclusivity
+    if exclude_doc is None:
+        exclude_doc = []
+    if include_doc is None:
+        include_doc = []
     active_filters = sum([bool(include_doc), bool(exclude_doc), auto_split > 0])
     if active_filters > 1:
-        console.print("[red]Error: --include-doc, --exclude-doc, and --auto-split are mutually exclusive.[/red]")
+        console.print("[red]Error: --include-doc, --exclude-doc, and --auto-split are mutually exclusive.[/red]")  # noqa: E501
         raise typer.Exit(code=1)
     if auto_split < 0.0 or auto_split > 1.0:
         console.print("[red]Error: --auto-split must be between 0.0 and 1.0.[/red]")
@@ -126,16 +130,22 @@ async def _run_generate_set(
             included = all_doc_ids[:split_at]
             excluded = all_doc_ids[split_at:]
 
-            split_path = Path(output_path).with_stem(Path(output_path).stem + "_split").with_suffix(".json")
-            split_path.parent.mkdir(parents=True, exist_ok=True)
-            split_path.write_text(
-                json.dumps(
-                    {"split_ratio": auto_split, "included_doc_ids": included, "excluded_doc_ids": excluded},
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-                encoding="utf-8",
+            split_path = (
+                Path(output_path)
+                .with_stem(Path(output_path).stem + "_split")
+                .with_suffix(".json")
             )
+            await asyncio.to_thread(lambda: split_path.parent.mkdir(parents=True, exist_ok=True))
+            split_content = json.dumps(
+                {
+                    "split_ratio": auto_split,
+                    "included_doc_ids": included,
+                    "excluded_doc_ids": excluded,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            await asyncio.to_thread(lambda: split_path.write_text(split_content, encoding="utf-8"))
             console.print(
                 f"Auto-split: [cyan]{len(included)}[/cyan] included / "
                 f"[yellow]{len(excluded)}[/yellow] excluded. "
@@ -171,15 +181,13 @@ async def _run_generate_set(
 
         # 3. Write JSON
         out = Path(output_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(
-            json.dumps(
-                [e.model_dump() for e in entries],
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        await asyncio.to_thread(lambda: out.parent.mkdir(parents=True, exist_ok=True))
+        out_json = json.dumps(
+            [e.model_dump() for e in entries],
+            ensure_ascii=False,
+            indent=2,
         )
+        await asyncio.to_thread(lambda: out.write_text(out_json, encoding="utf-8"))  # noqa: ASYNC240
         console.print(
             f"Wrote [green]{len(entries)}[/green] queries to [cyan]{out}[/cyan]"
         )
@@ -202,11 +210,11 @@ async def _run_eval(
 
     # Load test set
     path = Path(test_set_path)
-    if not path.exists():
+    if not await asyncio.to_thread(lambda: path.exists()):  # noqa: ASYNC240
         console.print(f"[red]Test set file not found: {path}[/red]")
         raise typer.Exit(code=1)
 
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw = await asyncio.to_thread(lambda: json.loads(path.read_text(encoding="utf-8")))  # noqa: ASYNC240
     test_set = [TestSetEntry.model_validate(item) for item in raw]
     console.print(f"Loaded [cyan]{len(test_set)}[/cyan] queries from [cyan]{path}[/cyan]")
 
@@ -218,7 +226,7 @@ async def _run_eval(
             session_factory=resources.session_factory,
         )
         pipeline = RetrievalPipeline(
-            dag=workflows.hybrid(deps),
+            dag=workflows.build_from_settings(deps),
             embedder=deps.embedder,
             session_factory=deps.session_factory,
         )
@@ -280,10 +288,11 @@ async def _run_eval(
         # Optional JSON report
         if output_path:
             out = Path(output_path)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(
-                report.model_dump_json(indent=2),
-                encoding="utf-8",
+            await asyncio.to_thread(lambda: out.parent.mkdir(parents=True, exist_ok=True))  # noqa: ASYNC240
+            await asyncio.to_thread(
+                lambda: out.write_text(  # noqa: ASYNC240
+                    report.model_dump_json(indent=2), encoding="utf-8"
+                )
             )
             console.print(f"Report written to [cyan]{out}[/cyan]")
 

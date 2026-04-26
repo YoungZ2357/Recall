@@ -54,7 +54,7 @@ def database_module(monkeypatch, temp_db_path, event_loop):
 
     # Import the current module
     import app.core.database
-    
+
     # Dispose any existing engine before reloading
     try:
         if app.core.database._engine is not None:

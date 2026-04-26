@@ -16,7 +16,6 @@ from typing import Any, ClassVar
 
 from app.core.exceptions import UnsupportedFileTypeError
 
-
 # ============================================================
 # 解析结果数据类
 # ============================================================
@@ -120,5 +119,7 @@ def get_parser(file_path: str | Path) -> BaseParser:
 # 触发子模块注册（保持在文件末尾）
 # ============================================================
 
-from app.ingestion.parsers import text  # noqa: F401, E402
-from app.ingestion.parsers import pdf_pymupdf  # noqa: F401, E402
+from app.ingestion.parsers import (  # noqa: E402
+    pdf_pymupdf,  # noqa: F401
+    text,  # noqa: F401
+)

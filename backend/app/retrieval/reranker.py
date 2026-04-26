@@ -128,7 +128,7 @@ class Reranker(BaseReranker):
         tag_embeddings: dict[str, list[float]] = {}
         if unique_tags:
             vectors = await self._embedder.embed_batch(unique_tags)
-            tag_embeddings = dict(zip(unique_tags, vectors))
+            tag_embeddings = dict(zip(unique_tags, vectors, strict=False))
 
         scores: dict[str, float] = {}
         for chunk_id, tags in chunk_tags_map.items():

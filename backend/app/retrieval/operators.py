@@ -16,7 +16,6 @@ from typing import Any, ClassVar, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-
 # ---------------------------------------------------------------------------
 # Intermediate data structures
 # ---------------------------------------------------------------------------

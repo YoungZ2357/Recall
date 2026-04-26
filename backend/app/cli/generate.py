@@ -69,7 +69,7 @@ async def _run_generate(
             session_factory=resources.session_factory,
         )
         pipeline = RetrievalPipeline(
-            dag=workflows.hybrid(deps),
+            dag=workflows.build_from_settings(deps),
             embedder=deps.embedder,
             session_factory=deps.session_factory,
         )

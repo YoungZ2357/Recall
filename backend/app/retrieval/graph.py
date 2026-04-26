@@ -21,10 +21,9 @@ from app.retrieval.operators import (
     BaseReranker,
     BaseRetriever,
     NodeType,
-    PipelineContext,
     SearchHit,
 )
-from app.retrieval.searcher import normalize_scores
+from app.retrieval.scoring import normalize_scores
 
 if TYPE_CHECKING:
     from app.core.pipeline_deps import PipelineDeps
@@ -106,6 +105,10 @@ class GraphBuilder:
 
     def __init__(self) -> None:
         self._spec = GraphSpec()
+
+    @property
+    def spec(self) -> GraphSpec:
+        return self._spec
 
     def add_node(
         self,

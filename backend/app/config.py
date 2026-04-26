@@ -1,5 +1,6 @@
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -63,6 +64,12 @@ class Settings(BaseSettings):
 
     # RRF
     rrf_k: int = Field(default=60, alias="RRF_K")
+
+    # Retrieval topology
+    topology_mode: Literal["linear", "hybrid", "hybrid_contextual_bm25", "full_hybrid"] = Field(
+        default="hybrid", alias="TOPOLOGY_MODE"
+    )
+    default_topology: str = Field(default="hybrid", alias="DEFAULT_TOPOLOGY")
 
     # CORS
     cors_origins: list[str] = Field(

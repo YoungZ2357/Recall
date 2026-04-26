@@ -6,33 +6,28 @@ All Qdrant SDK exceptions are converted to project-specific exceptions.
 """
 
 import logging
-from doctest import UnexpectedException
-from typing import Optional
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import (
     UnexpectedResponse,
-    ResponseHandlingException,
 )
 from qdrant_client.models import (
-    Distance,
-    PointStruct,
-    ScoredPoint,
-    Filter,
-    SearchRequest,
-    Record,
     CollectionInfo,
+    Distance,
+    Filter,
     PointIdsList,
+    PointStruct,
+    Record,
+    ScoredPoint,
+    SearchRequest,
 )
 
 from app.config import settings
 from app.core.exceptions import (
-    VectorDBError,
     CollectionNotFoundError,
     EmbeddingDimensionMismatchError,
+    VectorDBError,
 )
-
-
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +41,9 @@ class QdrantService:
 
     def __init__(
         self,
-        host: Optional[str] = None,
-        port: Optional[int] = None,
-        collection_name: Optional[str] = None,
+        host: str | None = None,
+        port: int | None = None,
+        collection_name: str | None = None,
     ) -> None:
         """Initialize Qdrant service with configuration.
 
@@ -60,7 +55,7 @@ class QdrantService:
         self.host = host or settings.qdrant_host
         self.port = port or settings.qdrant_port
         self.collection_name = collection_name or settings.qdrant_collection
-        self.client: Optional[AsyncQdrantClient] = None
+        self.client: AsyncQdrantClient | None = None
 
     async def __aenter__(self) -> "QdrantService":
         await self.connect()
@@ -125,7 +120,10 @@ class QdrantService:
                         "distance": distance,
                     },
                 )
-                logger.info(f"Created collection '{self.collection_name}' with dimension {dimension}")
+                logger.info(
+                    f"Created collection '{self.collection_name}' "
+                    f"with dimension {dimension}"
+                )
                 return
 
             # Collection exists, verify dimension
@@ -135,9 +133,15 @@ class QdrantService:
                 raise EmbeddingDimensionMismatchError(
                     expected=dimension,
                     actual=existing_dim,
-                    detail=f"Collection '{self.collection_name}' dimension mismatch: {existing_dim} vs {dimension}",
+                    detail=(
+                        f"Collection '{self.collection_name}' "
+                        f"dimension mismatch: {existing_dim} vs {dimension}"
+                    ),
                 )
-            logger.debug(f"Collection '{self.collection_name}' already exists with dimension {dimension}")
+            logger.debug(
+                f"Collection '{self.collection_name}' already exists "
+                f"with dimension {dimension}"
+            )
 
         except EmbeddingDimensionMismatchError:
             raise
@@ -159,7 +163,7 @@ class QdrantService:
         except Exception as e:
             raise VectorDBError(f"Failed to delete collection: {e}") from e
 
-    async def get_collection_info(self) -> Optional[CollectionInfo]:
+    async def get_collection_info(self) -> CollectionInfo | None:
         """Get collection metadata.
 
         Returns:
@@ -173,8 +177,8 @@ class QdrantService:
             return await self.client.get_collection(self.collection_name)
         except CollectionNotFoundError:
             return None
-        except UnexpectedResponse:
-            raise VectorDBError(f"Collection does not exist: {self.collection_name}")
+        except UnexpectedResponse as e:
+            raise VectorDBError(f"Collection does not exist: {self.collection_name}") from e
         except Exception as e:
             raise VectorDBError(f"Failed to get collection info: {e}") from e
 
@@ -258,8 +262,8 @@ class QdrantService:
         self,
         query_vector: list[float],
         top_k: int = 10,
-        score_threshold: Optional[float] = None,
-        query_filter: Optional[Filter] = None,
+        score_threshold: float | None = None,
+        query_filter: Filter | None = None,
     ) -> list[ScoredPoint]:
         """ANN search with single query.
 
@@ -423,7 +427,9 @@ class QdrantService:
                 )
                 logger.debug("Set payload for %d points", len(batch))
             except Exception as e:
-                raise VectorDBError(f"Failed to set payload for batch {i // batch_size}: {e}") from e
+                raise VectorDBError(
+                    f"Failed to set payload for batch {i // batch_size}: {e}"
+                ) from e
         logger.info("Set payload for total %d points", len(point_ids))
 
     async def scroll_ids(
