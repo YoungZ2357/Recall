@@ -123,8 +123,6 @@ MCP + Frontend (P3):
 - `DocumentService` — Document CRUD with chunk statistics
 - `ReindexService` — Batch re-embedding on model switch
 
-**MCP Server**
-- Stdio server with 3 tools: `search` (ranked chunks with scores), `ingest` (upload files), `generate` (RAG with context)
 
 ## Project Structure
 
@@ -300,11 +298,3 @@ python -m app.cli eval run --test-set data/eval_test_set.json --top-k 10
 python -m app.cli docs delete --all
 ```
 
-### MCP Server
-
-```bash
-# Start the MCP stdio server
-python -m app.mcp
-
-# Available tools: search, ingest, generate
-```
