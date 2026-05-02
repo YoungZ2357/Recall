@@ -6,6 +6,7 @@ All Qdrant SDK exceptions are converted to project-specific exceptions.
 """
 
 import logging
+import os
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import (
@@ -69,6 +70,12 @@ class QdrantService:
         if self.client is not None:
             return
         try:
+            # Bypass system proxy for local Qdrant — proxies intercept localhost traffic
+            for key in ("NO_PROXY", "no_proxy"):
+                current = os.environ.get(key, "")
+                entries = {e.strip() for e in current.split(",") if e.strip()}
+                entries.update({"localhost", "127.0.0.1"})
+                os.environ[key] = ",".join(entries)
             self.client = AsyncQdrantClient(host=self.host, port=self.port)
             logger.info(f"Connected to Qdrant at {self.host}:{self.port}")
         except Exception as e:

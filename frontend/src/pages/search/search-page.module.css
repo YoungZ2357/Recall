@@ -1,0 +1,256 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg-tertiary);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ─────────────────────────────── */
+.sidebar {
+  width: 190px;
+  min-width: 190px;
+  border-right: 0.5px solid var(--border-default);
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-secondary);
+  overflow-y: auto;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sectionLabel {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+
+.modeList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.modeItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+}
+
+.modeItemActive {
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border-emphasis);
+}
+
+.modeDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 0.5px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.modeDotActive {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.modeLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.modeLabelActive {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.futureSlot {
+  border: 0.5px dashed var(--border-default);
+  border-radius: var(--border-radius-md);
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.generateBtn {
+  width: 100%;
+  padding: 7px;
+  font-size: 13px;
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid var(--border-default);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.generateBtn:hover {
+  border-color: var(--border-emphasis);
+}
+
+/* ── Main ────────────────────────────────── */
+.main {
+  flex: 1;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+}
+
+.searchRow {
+  display: flex;
+  gap: 8px;
+}
+
+.searchBtn {
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: var(--border-radius-md);
+  border: 0.5px solid var(--border-default);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.searchBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Agent banner ────────────────────────── */
+.agentBanner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  background: var(--accent-surface);
+  border: 0.5px solid var(--accent);
+  border-radius: var(--border-radius-md);
+}
+
+.agentLabel {
+  font-size: 11px;
+  color: var(--accent-text);
+  font-weight: 500;
+}
+
+.agentDot {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.agentQuery {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.agentClose {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+/* ── Result list ─────────────────────────── */
+.resultList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 60px;
+}
+
+.resultCard {
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border-default);
+  border-radius: var(--border-radius-lg);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.resultCard:hover {
+  border-color: var(--border-emphasis);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cardRank {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.cardScore {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.cardScoreAccent {
+  font-size: 12px;
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+}
+
+.cardContent {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.tagRow {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 10px;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border-default);
+  border-radius: 20px;
+  padding: 2px 8px;
+  color: var(--text-secondary);
+}
+
+.emptySlot {
+  border: 0.5px dashed var(--border-default);
+  border-radius: var(--border-radius-md);
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: center;
+}

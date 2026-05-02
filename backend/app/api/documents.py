@@ -6,8 +6,7 @@ from pathlib import Path as FilePath
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from fastapi import File as FastAPIFile
+from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -130,7 +129,7 @@ async def get_document(
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(
-    file: FastAPIFile,
+    file: UploadFile,
     settings: SettingsDep,
     ingestion_service: IngestionServiceDep,
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],

@@ -44,7 +44,8 @@ local-embedding = [
 
 # Sprint 3-4: Retrieval + Refiner + API
 api = [
-    "fastapi>=0.111",
+    "fastapi>=0.111,<0.130",
+    "starlette>=0.40,<1.0",
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",  # 文件上传
 ]
