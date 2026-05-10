@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "mcp__Claude_in_Chrome__tabs_context_mcp",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(curl -sv -X POST http://localhost:8000/api/search -H \"Content-Type: application/json\" -d \"{\\\\\"query\\\\\": \\\\\"test\\\\\", \\\\\"top_k\\\\\": 2}\")",
+      "Bash(conda run *)",
+      "Bash(docker run *)",
+      "Bash(docker compose *)"
     ]
   }
 }

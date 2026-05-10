@@ -1,100 +1,171 @@
 import { useState } from 'react';
-import { Spin, message } from 'antd';
+import { message } from 'antd';
 import { AppNav } from '../../components/app-nav';
-import { ScoreBreakdown } from '../../components/score-breakdown';
 import { ChatInput } from '../../components/chat-input';
+import { ChunkCard } from '../../components/chunk-card';
+import { ConfigPanel, DEFAULT_CONFIG } from '../../components/config-panel';
+import { GeneratedAnswer } from '../../components/generated-answer';
 import { fetchSearch } from '../../api/search';
-import type { ActionMode, QueryMode, RetentionMode, SearchResultItem } from '../../api/types';
+import { streamGenerate } from '../../api/generate';
+import type { SearchResultItem } from '../../api/types';
+import type { SearchConfig } from '../../components/config-panel';
 import styles from './search-page.module.css';
 
+const SCORE_COLORS = {
+  retrieval: 'var(--signal-retrieval)',
+  metadata:  'var(--signal-metadata)',
+  retention: 'var(--signal-retention)',
+};
+
+const TOPO_LABELS: Record<SearchConfig['topo'], string> = {
+  vector_only: 'Vector only',
+  bm25_only:   'BM25 only',
+  rrf:         'Vector + BM25',
+  custom:      'Custom',
+};
+
+interface SearchMeta {
+  ms: number;
+  topo: string;
+  rewrite: string;
+  count: number;
+}
+
+function MetaBar({ ms, topo, rewrite, count }: SearchMeta) {
+  return (
+    <div className={styles.metaBar}>
+      <span>⏱ {ms}ms</span>
+      <span>{topo}</span>
+      <span className={styles.metaDot}>·</span>
+      <span>{rewrite}</span>
+      <span className={styles.metaDot}>·</span>
+      <span>{count} chunks</span>
+      <div className={styles.metaSpacer} />
+      <div className={styles.legend}>
+        {Object.entries(SCORE_COLORS).map(([k, c]) => (
+          <span key={k} className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ background: c }} />
+            {k}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SearchPage() {
+  const [mode, setMode] = useState(0);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(true);
+  const [config, setConfig] = useState<SearchConfig>(DEFAULT_CONFIG);
+
   const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [generated, setGenerated] = useState('');
+  const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [lastQuery, setLastQuery] = useState<string | null>(null);
+  const [meta, setMeta] = useState<SearchMeta | null>(null);
 
-  async function handleSubmit(
-    query: string,
-    actionMode: ActionMode,
-    queryMode: QueryMode,
-    topK: number,
-    retentionMode: RetentionMode,
-  ) {
-    // TODO F-3: handle 'generate' and 'both' action modes
-    if (actionMode === 'generate') return;
+  const showGenerate = mode >= 1;
+  const showChunks   = mode <= 1;
+  const hasContent   = results.length > 0 || generated.length > 0;
 
-    setLoading(true);
+  function patchConfig(patch: Partial<SearchConfig>) {
+    setConfig(prev => ({ ...prev, ...patch }));
+  }
+
+  async function runStreamGenerate(query: string) {
+    setStreaming(true);
     try {
-      const data = await fetchSearch({ query, top_k: topK, mode: retentionMode });
-      // NOTE: queryMode is not yet passed to backend — tracked in F-5
-      void queryMode;
+      for await (const chunk of streamGenerate({ query, top_k: config.topK, mode: config.retention })) {
+        if (chunk.startsWith('{')) break; // sources frame — skip
+        setGenerated(prev => prev + chunk);
+      }
+    } finally {
+      setStreaming(false);
+    }
+  }
+
+  async function handleSubmit(query: string) {
+    setLoading(true);
+    setGenerated('');
+    const t0 = Date.now();
+
+    try {
+      const searchPromise = showChunks
+        ? fetchSearch({ query, top_k: config.topK, mode: config.retention })
+        : Promise.resolve([] as SearchResultItem[]);
+
+      const generatePromise = showGenerate
+        ? runStreamGenerate(query)
+        : Promise.resolve();
+
+      const [data] = await Promise.all([searchPromise, generatePromise]);
       setResults(data);
-      setLastQuery(query);
-      setExpandedId(data[0]?.chunk_id ?? null);
+      setMeta({ ms: Date.now() - t0, topo: TOPO_LABELS[config.topo], rewrite: config.rewrite, count: data.length });
     } catch {
-      void message.error('Search failed. Please try again.');
+      void message.error('Request failed. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
-  function toggleCard(id: string) {
-    setExpandedId(prev => (prev === id ? null : id));
-  }
-
   return (
     <div className={styles.shell}>
       <AppNav />
-      <main className={styles.resultArea}>
-        {lastQuery && (
-          <div className={styles.agentBanner}>
-            <span className={styles.agentLabel}>Via Agent</span>
-            <span className={styles.agentDot}>·</span>
-            <span className={styles.agentQuery}>"{lastQuery}"</span>
-            <div className={styles.spacer} />
-            <span className={styles.agentClose} onClick={() => setLastQuery(null)}>✕</span>
+
+      <div className={styles.contentArea}>
+        {hasContent ? (
+          <>
+            {meta && <MetaBar {...meta} />}
+
+            {showGenerate && (
+              <GeneratedAnswer text={generated} streaming={streaming} />
+            )}
+
+            {showChunks && results.length > 0 && (
+              <>
+                <div
+                  className={styles.sourcesToggle}
+                  onClick={() => setSourcesOpen(o => !o)}
+                >
+                  <span
+                    className={styles.toggleArrow}
+                    style={{ transform: sourcesOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                  >
+                    ▾
+                  </span>
+                  {results.length} sources
+                </div>
+
+                {sourcesOpen && results.map((item, i) => (
+                  <ChunkCard key={item.chunk_id} item={item} rank={i + 1} />
+                ))}
+              </>
+            )}
+          </>
+        ) : (
+          <div className={styles.emptyState}>
+            <span className={styles.emptyIcon}>⌕</span>
+            <span className={styles.emptyText}>Enter a query to search your knowledge base</span>
           </div>
         )}
+      </div>
 
-        <Spin spinning={loading} tip="Searching…">
-          <div className={styles.resultList}>
-            {results.map((item, idx) => {
-              const isExpanded = expandedId === item.chunk_id;
-              return (
-                <div
-                  key={item.chunk_id}
-                  className={styles.resultCard}
-                  onClick={() => toggleCard(item.chunk_id)}
-                >
-                  <div className={styles.cardHeader}>
-                    <span className={styles.cardRank}>#{idx + 1}</span>
-                    <span className={styles.cardTitle}>{item.filename}</span>
-                    <div className={styles.spacer} />
-                    <span className={isExpanded ? styles.cardScoreAccent : styles.cardScore}>
-                      {item.final_score.toFixed(3)}
-                    </span>
-                  </div>
-                  <p className={styles.cardContent}>{item.content}</p>
-                  {item.tags.length > 0 && (
-                    <div className={styles.tagRow}>
-                      {item.tags.map(tag => (
-                        <span key={tag} className={styles.tag}>{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                  {isExpanded && (
-                    <ScoreBreakdown detail={item.score_detail} finalScore={item.final_score} />
-                  )}
-                </div>
-              );
-            })}
-            {results.length === 0 && !loading && (
-              <div className={styles.emptySlot}>+ generation output area (expands below results on trigger)</div>
-            )}
-          </div>
-        </Spin>
-      </main>
-      <ChatInput onSubmit={handleSubmit} loading={loading} />
+      <ConfigPanel
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+        config={config}
+        onChange={patchConfig}
+      />
+
+      <ChatInput
+        onSubmit={handleSubmit}
+        loading={loading}
+        mode={mode}
+        onModeChange={setMode}
+        configOpen={configOpen}
+        onConfigToggle={() => setConfigOpen(o => !o)}
+      />
     </div>
   );
 }

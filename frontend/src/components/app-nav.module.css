@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 16px;
+  padding: 13px 20px;
   border-bottom: 0.5px solid var(--border-default);
   background: var(--bg-secondary);
   flex-shrink: 0;
@@ -15,7 +15,7 @@
 }
 
 .logo {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -26,7 +26,7 @@
 }
 
 .link {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-tertiary);
   cursor: pointer;
   text-decoration: none;

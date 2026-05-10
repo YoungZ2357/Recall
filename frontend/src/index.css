@@ -19,6 +19,27 @@
   --border-radius-md: 6px;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, Consolas, monospace;
 
+  /* design token aliases for search page layout */
+  --page-bg:       var(--bg-secondary);
+  --surface:       var(--bg-tertiary);
+  --card-bg:       var(--bg-primary);
+  --text-muted:    var(--text-tertiary);
+  --border:        var(--border-default);
+  --track-bg:      var(--border-default);
+  --accent-bg:     var(--accent-surface);
+  --tag-bg:        var(--bg-tertiary);
+  --tag-fg:        var(--text-secondary);
+  --badge-vec-bg:  #E8F1FB;
+  --badge-vec-fg:  #1A5BA8;
+  --badge-bm25-bg: #EAF4DE;
+  --badge-bm25-fg: #2D5A0E;
+  --input-bg:      var(--bg-primary);
+  --danger:        #dc2626;
+  --sync-ok-bg:    #ecfdf5;
+  --sync-ok-fg:    #16a34a;
+  --sync-dirty-bg: #fffbeb;
+  --sync-dirty-fg: #d97706;
+
   font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   color-scheme: light dark;
@@ -39,6 +60,11 @@
     --accent:         #2BA898;
     --accent-surface: #0F2420;
     --accent-text:    #66CCBC;
+    --danger:         #f87171;
+    --sync-ok-bg:     #052e16;
+    --sync-ok-fg:     #4ade80;
+    --sync-dirty-bg:  #2d1f00;
+    --sync-dirty-fg:  #fbbf24;
   }
 }
 

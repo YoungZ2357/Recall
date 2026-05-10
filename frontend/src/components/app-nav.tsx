@@ -4,7 +4,7 @@ import styles from './app-nav.module.css';
 const NAV_ITEMS = [
   { label: 'Search', to: '/search' },
   { label: 'Library', to: '/library' },
-  { label: 'Pipeline', to: '/pipeline' },
+  { label: 'Ingest', to: '/ingest' },
   { label: 'Eval', to: '/eval' },
 ] as const;
 

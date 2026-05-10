@@ -204,7 +204,7 @@ class ChunkManager:
                 doc_id=doc_id,
                 detail=(
                     f"write_chunks requires PENDING or DIRTY status, "
-                    f"got {doc.sync_status.value}"
+                    f"got {doc.sync_status}"
                 ),
             )
 

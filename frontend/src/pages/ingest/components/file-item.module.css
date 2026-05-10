@@ -1,0 +1,85 @@
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--border-radius-md);
+  background: var(--page-bg);
+  margin-bottom: 8px;
+  transition: background 0.15s;
+}
+
+.item:hover {
+  background: var(--surface);
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  letter-spacing: -0.3px;
+}
+
+.icon.pdf {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.icon.md {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.icon.txt {
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.remove {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.remove:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}

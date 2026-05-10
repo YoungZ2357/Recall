@@ -3,134 +3,104 @@
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: var(--bg-tertiary);
+  background: var(--page-bg);
+  position: relative;
 }
 
-/* ── Result area ─────────────────────────── */
-.resultArea {
+/* ── Scrollable content area ─────────────── */
+.contentArea {
   flex: 1;
   overflow-y: auto;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  padding: 20px 24px 12px;
 }
 
-/* ── Agent banner ────────────────────────── */
-.agentBanner {
+/* ── Meta bar ────────────────────────────── */
+.metaBar {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 10px;
-  background: var(--accent-surface);
-  border: 0.5px solid var(--accent);
-  border-radius: var(--border-radius-md);
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
 }
 
-.agentLabel {
-  font-size: 11px;
-  color: var(--accent-text);
-  font-weight: 500;
+.metaDot {
+  opacity: 0.5;
 }
 
-.agentDot {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.agentQuery {
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.agentClose {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.spacer {
+.metaSpacer {
   flex: 1;
 }
 
-/* ── Result list ─────────────────────────── */
-.resultList {
+.legend {
+  display: flex;
+  gap: 10px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ── Sources toggle ──────────────────────── */
+.sourcesToggle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggleArrow {
+  display: inline-block;
+  transition: transform 0.2s;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ── Empty state ─────────────────────────── */
+.emptyState {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding-top: 20%;
   gap: 10px;
-  min-height: 60px;
+  color: var(--text-muted);
 }
 
-.resultCard {
-  background: var(--bg-primary);
-  border: 0.5px solid var(--border-default);
-  border-radius: var(--border-radius-lg);
-  padding: 12px 14px;
-  cursor: pointer;
+.emptyState::after {
+  content: '↓';
+  font-size: 16px;
+  opacity: 0.25;
+  margin-top: 20px;
+  animation: nudge 2.4s ease-in-out infinite;
 }
 
-.resultCard:hover {
-  border-color: var(--border-emphasis);
+@keyframes nudge {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(5px); }
 }
 
-.cardHeader {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 6px;
+.emptyIcon {
+  font-size: 36px;
+  opacity: 0.4;
 }
 
-.cardRank {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.cardTitle {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.cardScore {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
-
-.cardScoreAccent {
-  font-size: 12px;
-  color: var(--accent-text);
-  font-family: var(--font-mono);
-}
-
-.cardContent {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.6;
-}
-
-.tagRow {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-  flex-wrap: wrap;
-}
-
-.tag {
-  font-size: 10px;
-  background: var(--bg-secondary);
-  border: 0.5px solid var(--border-default);
-  border-radius: 20px;
-  padding: 2px 8px;
-  color: var(--text-secondary);
-}
-
-.emptySlot {
-  border: 0.5px dashed var(--border-default);
-  border-radius: var(--border-radius-md);
-  padding: 5px 10px;
-  font-size: 11px;
-  color: var(--text-tertiary);
-  text-align: center;
+.emptyText {
+  font-size: 14px;
+  opacity: 0.8;
 }

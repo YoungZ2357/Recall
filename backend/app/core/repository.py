@@ -68,6 +68,18 @@ class DocumentRepository:
         await session.flush()
         return True
 
+    @classmethod
+    async def count_all(cls, session: AsyncSession) -> int:
+        """Return total number of documents."""
+        result = await session.execute(select(func.count()).select_from(Document))
+        return result.scalar_one()
+
+    @classmethod
+    async def get_latest_created_at(cls, session: AsyncSession) -> datetime | None:
+        """Return the most recent document created_at, or None if no documents exist."""
+        result = await session.execute(select(func.max(Document.created_at)))
+        return result.scalar_one()
+
 
 class ChunkRepository:
 
@@ -187,6 +199,20 @@ class ChunkRepository:
         )
         return {str(row.chunk_id): row.weight for row in result.all()}
 
+
+    @classmethod
+    async def count_all(cls, session: AsyncSession) -> int:
+        """Return total number of chunks."""
+        result = await session.execute(select(func.count()).select_from(Chunk))
+        return result.scalar_one()
+
+    @classmethod
+    async def count_by_status(cls, session: AsyncSession) -> dict[str, int]:
+        """Return chunk counts grouped by sync_status: {status_value: count}."""
+        result = await session.execute(
+            select(Chunk.sync_status, func.count().label("cnt")).group_by(Chunk.sync_status)
+        )
+        return {str(row.sync_status): row.cnt for row in result.all()}
 
     @classmethod
     async def get_all_unique_tags(cls, session: AsyncSession) -> list[str]:

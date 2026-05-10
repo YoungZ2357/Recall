@@ -1,36 +1,137 @@
-.chatArea {
-  flex: none;
-  border-top: 0.5px solid var(--border-default);
-  background: var(--bg-secondary);
-  padding: 10px 14px 14px;
-}
-
-.controlsRow {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.controlLabel {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-.topKControl {
+.bar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-emphasis);
+  background: var(--card-bg);
+  flex-shrink: 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.07);
 }
 
-.inputRow {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
+/* mode segmented */
+.modeGroup {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
-.textarea {
+.modeItem {
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  background: transparent;
+  user-select: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.modeItem:hover {
+  color: var(--text-primary);
+}
+
+.modeActive {
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--accent);
+  background: var(--accent-bg);
+  font-weight: 600;
+  user-select: none;
+}
+
+/* input wrapper */
+.inputWrap {
   flex: 1;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-emphasis);
+  border-radius: 10px;
+  padding: 0 12px;
+  height: 44px;
+  gap: 6px;
+  background: var(--input-bg);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.inputWrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.searchIcon {
+  font-size: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  background: transparent;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+/* icon buttons */
+.iconBtn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  background: transparent;
+  flex-shrink: 0;
+  font-size: 18px;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.iconBtn:hover {
+  color: var(--text-secondary);
+}
+
+.iconBtnActive {
+  composes: iconBtn;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.sendBtn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: transparent;
+  flex-shrink: 0;
+  font-size: 18px;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.sendBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sendBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }

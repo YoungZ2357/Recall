@@ -6,21 +6,38 @@ from pathlib import Path as FilePath
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Request, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.dependencies import (
+    EmbedderDep,
+    GeneratorDep,
     IngestionServiceDep,
     QdrantDep,
+    ReindexServiceDep,
     SessionDep,
     SettingsDep,
     get_session_factory,
 )
-from app.core.exceptions import DocumentNotFoundError, IngestionError, UnsupportedFileTypeError
+from app.core.chunk_manager import ChunkManager
+from app.core.exceptions import (
+    ConfigError,
+    DocumentNotFoundError,
+    IngestionError,
+    UnsupportedFileTypeError,
+)
 from app.core.models import Chunk, SyncStatus
-from app.core.repository import ChunkRepository
-from app.core.schemas import DeleteResponse, DocumentDetail, DocumentSummary, UploadResponse
+from app.core.repository import ChunkRepository, DocumentRepository
+from app.core.schemas import (
+    ChunkDetail,
+    DeleteResponse,
+    DocumentDetail,
+    DocumentSummary,
+    RetagRequest,
+    UploadResponse,
+    WeightUpdate,
+)
 from app.services import DocumentService
 
 logger = logging.getLogger(__name__)
@@ -96,7 +113,7 @@ async def list_documents(
                 chunk_count=total,
                 created_at=doc.created_at.isoformat() if doc.created_at else "",
                 weight=doc.weight,
-                sync_status=doc.sync_status.value,
+                sync_status=str(doc.sync_status),
             )
         )
     return result
@@ -123,7 +140,7 @@ async def get_document(
         tags=tags,
         created_at=doc.created_at.isoformat() if doc.created_at else "",
         weight=doc.weight,
-        sync_status=doc.sync_status.value,
+        sync_status=str(doc.sync_status),
     )
 
 
@@ -174,7 +191,62 @@ async def upload_document(
         doc_id=str(doc.document_id),
         filename=file.filename or "unknown",
         chunk_count=total,
-        status=doc.sync_status.value,
+        status=str(doc.sync_status),
+    )
+
+
+@router.get("/{doc_id}/chunks", response_model=list[ChunkDetail])
+async def list_document_chunks(
+    doc_id: str,
+    session: SessionDep,
+) -> list[ChunkDetail]:
+    doc = await DocumentService.get_by_id(session, UUID(doc_id))
+    if doc is None:
+        raise DocumentNotFoundError(doc_id=doc_id)
+
+    chunks = await ChunkRepository.list_by_document(session, UUID(doc_id))
+    result: list[ChunkDetail] = []
+    for c in sorted(chunks, key=lambda x: x.chunk_index):
+        try:
+            tags = json.loads(c.tags) if c.tags else []
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+        result.append(
+            ChunkDetail(
+                chunk_id=str(c.chunk_id),
+                chunk_index=c.chunk_index,
+                content=c.content,
+                context=c.context,
+                tags=tags,
+                sync_status=str(c.sync_status),
+            )
+        )
+    return result
+
+
+@router.patch("/{doc_id}/weight", response_model=DocumentSummary)
+async def update_document_weight(
+    doc_id: str,
+    body: WeightUpdate,
+    session: SessionDep,
+) -> DocumentSummary:
+    doc = await DocumentService.get_by_id(session, UUID(doc_id))
+    if doc is None:
+        raise DocumentNotFoundError(doc_id=doc_id)
+
+    doc.weight = body.weight
+    await session.commit()
+    await session.refresh(doc)
+
+    total, _synced = await _get_chunk_stats(session, doc.document_id)
+    return DocumentSummary(
+        doc_id=str(doc.document_id),
+        filename=_extract_filename(doc.source_path, doc.title),
+        file_type=_extract_file_type(doc.source_path),
+        chunk_count=total,
+        created_at=doc.created_at.isoformat() if doc.created_at else "",
+        weight=doc.weight,
+        sync_status=str(doc.sync_status),
     )
 
 
@@ -192,3 +264,144 @@ async def delete_document(
     await session.commit()
 
     return DeleteResponse(deleted=True, doc_id=doc_id)
+
+
+# ============================================================
+# Post-op endpoints
+# ============================================================
+
+
+@router.post("/{doc_id}/reindex")
+async def reindex_document(
+    doc_id: str,
+    reindex_service: ReindexServiceDep,
+) -> dict:
+    """Re-embed all chunks of a document and sync to Qdrant."""
+    result = await reindex_service.reindex_document(doc_id)
+    return {
+        "doc_id": doc_id,
+        "status": "reindexed",
+        "total": result.total,
+        "succeeded": result.succeeded,
+        "failed": result.failed,
+    }
+
+
+@router.post("/{doc_id}/retag")
+async def retag_document(
+    doc_id: str,
+    req: RetagRequest,
+    session: SessionDep,
+    qdrant: QdrantDep,
+    request: Request,
+) -> dict:
+    """Update tags on all chunks of a document.
+
+    tags=null: auto-regenerate via LLM (requires LLM_API_KEY).
+    tags=[...]: set the provided tags directly.
+    """
+    doc = await DocumentService.get_by_id(session, UUID(doc_id))
+    if doc is None:
+        raise DocumentNotFoundError(doc_id=doc_id)
+
+    if req.tags is not None:
+        tags = req.tags
+    else:
+        generator = request.app.state.generator
+        if generator is None:
+            raise ConfigError(message="LLM_API_KEY is not configured")
+
+        chunks = await ChunkRepository.list_by_document(session, UUID(doc_id))
+        doc_text = "\n\n".join(c.content for c in sorted(chunks, key=lambda c: c.chunk_index))
+
+        from app.ingestion.tagger import AutoTagger
+        tagger = AutoTagger(generator)
+        tags = await tagger.tag(doc_text, session)
+
+    updated = await ChunkManager.retag_document(session, qdrant, doc_id, tags)
+    await session.commit()
+    return {"doc_id": doc_id, "updated_chunks": updated, "tags": tags}
+
+
+@router.post("/{doc_id}/contextualize")
+async def contextualize_document(
+    doc_id: str,
+    session: SessionDep,
+    qdrant: QdrantDep,
+    embedder: EmbedderDep,
+    generator: GeneratorDep,
+) -> dict:
+    """Generate context for all chunks of a document and re-embed them."""
+    doc = await DocumentService.get_by_id(session, UUID(doc_id))
+    if doc is None:
+        raise DocumentNotFoundError(doc_id=doc_id)
+
+    chunks = await ChunkRepository.list_by_document(session, UUID(doc_id))
+    if not chunks:
+        return {"doc_id": doc_id, "contextualized": 0}
+
+    sorted_chunks = sorted(chunks, key=lambda c: c.chunk_index)
+    doc_text = "\n\n".join(c.content for c in sorted_chunks)
+
+    from app.ingestion.contextualizer import ContextGenerator
+    ctx_gen = ContextGenerator(generator)
+    contexts = await ctx_gen.generate_batch(doc_text, [c.content for c in sorted_chunks])
+
+    chunk_updates = []
+    for chunk, context in zip(sorted_chunks, contexts, strict=False):
+        if context is None:
+            continue
+        try:
+            tags = json.loads(chunk.tags) if chunk.tags else []
+        except (json.JSONDecodeError, TypeError):
+            tags = []
+        chunk_updates.append({
+            "chunk_id": chunk.chunk_id,
+            "content": chunk.content,
+            "chunk_index": chunk.chunk_index,
+            "tags": tags,
+            "context": context,
+        })
+
+    if not chunk_updates:
+        return {"doc_id": doc_id, "contextualized": 0}
+
+    count = await ChunkManager.contextualize_chunks(
+        session, qdrant, embedder, doc_id, chunk_updates
+    )
+    return {"doc_id": doc_id, "contextualized": count}
+
+
+@router.get("/{doc_id}/health")
+async def health_check_document(
+    doc_id: str,
+    session: SessionDep,
+    qdrant: QdrantDep,
+) -> dict:
+    """Verify SQLite ↔ Qdrant consistency for a document (raises 409 on mismatch)."""
+    doc = await DocumentService.get_by_id(session, UUID(doc_id))
+    if doc is None:
+        raise DocumentNotFoundError(doc_id=doc_id)
+
+    await ChunkManager.health_check(session, qdrant, doc_id, level="full")
+    return {"doc_id": doc_id, "status": "ok"}
+
+
+@router.post("/health-check")
+async def health_check_all(
+    session: SessionDep,
+    qdrant: QdrantDep,
+) -> dict:
+    """Run health check on all documents and auto-mark inconsistent ones as dirty."""
+    docs = await DocumentRepository.list_all(session)
+    issues: list[dict] = []
+
+    for doc in docs:
+        doc_id = str(doc.document_id)
+        try:
+            await ChunkManager.health_check_with_auto_dirty(session, qdrant, doc_id, level="full")
+        except Exception as exc:
+            issues.append({"doc_id": doc_id, "error": str(exc)})
+            await session.rollback()
+
+    return {"checked": len(docs), "issues": issues}

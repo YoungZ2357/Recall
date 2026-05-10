@@ -39,7 +39,7 @@ class MinerUParser(BaseParser):
     """Parse PDF via MinerU Precision Cloud API, returning Markdown text.
 
     Not auto-registered. Use --pdf-parser mineru in the ingest CLI to select it.
-    Requires MINERU_API_KEY environment variable.
+    Requires MINERU_API environment variable.
     """
 
     supported_extensions: ClassVar[set[str]] = {".pdf"}
@@ -77,7 +77,7 @@ class MinerUParser(BaseParser):
                 )
             except OSError as exc:
                 raise ParsingError(
-                    message="MINERU_API_KEY 未设置，无法使用 MinerU 解析器",
+                    message="MINERU_API 未设置，无法使用 MinerU 解析器",
                     detail=str(exc),
                 ) from exc
             except _MinerUError as exc:

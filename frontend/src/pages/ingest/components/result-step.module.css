@@ -1,0 +1,181 @@
+.loading {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 40px 0;
+  text-align: center;
+}
+
+/* Metric row */
+.metricRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.metricBox {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  padding: 14px;
+  text-align: center;
+}
+
+.metricLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.metricValue {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.metricRunning { color: var(--accent); }
+.metricSuccess { color: var(--sync-ok-fg); }
+.metricError   { color: #dc2626; }
+
+/* Card for progress */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-lg);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.cardBody {
+  padding: 16px 20px;
+}
+
+/* Result summary */
+.resultSummary {
+  background: var(--sync-ok-bg);
+  border: 1px solid #86efac;
+  border-radius: var(--border-radius-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.resultSummary h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sync-ok-fg);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resultGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+
+.resultItem {
+  text-align: center;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--border-radius-md);
+}
+
+.rdl {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.rdv {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+/* Error summary */
+.errorSummary {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--border-radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.errorSummary h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #dc2626;
+  margin: 0 0 8px;
+}
+
+.errorFile {
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid #fecaca;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.errorFile:last-child {
+  border-bottom: none;
+}
+
+.errorMsg {
+  font-size: 11px;
+  color: #dc2626;
+  font-family: var(--font-mono);
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actionRight {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.btn {
+  padding: 9px 20px;
+  border-radius: var(--border-radius-md);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1.5px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn:hover {
+  border-color: var(--border-emphasis);
+  background: var(--surface);
+}
+
+.btnPrimary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btnPrimary:hover {
+  filter: brightness(0.9);
+}

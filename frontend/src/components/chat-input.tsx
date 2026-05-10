@@ -1,110 +1,81 @@
 import { useState } from 'react';
-import { Input, InputNumber, Select, Segmented, Button } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
-import type { ActionMode, QueryMode, RetentionMode } from '../api/types';
 import styles from './chat-input.module.css';
 
-const QUERY_MODE_OPTIONS = [
-  { value: 'basic', label: 'Basic' },
-  { value: 'rag_fusion', label: 'RAG-Fusion' },
-  { value: 'hyde', label: 'HyDE' },
-];
-
-const RETENTION_OPTIONS = [
-  { value: 'prefer_recent', label: 'prefer_recent' },
-  { value: 'awaken_forgotten', label: 'awaken_forgotten' },
-];
-
-const ACTION_SEGMENTS = [
-  { label: 'Search', value: 'search' },
-  { label: 'Generate', value: 'generate' },
-  { label: 'S+G', value: 'both' },
-];
+const MODES = ['Search', 'S+G', 'Gen'] as const;
 
 interface ChatInputProps {
-  onSubmit: (
-    query: string,
-    actionMode: ActionMode,
-    queryMode: QueryMode,
-    topK: number,
-    retentionMode: RetentionMode,
-  ) => void;
+  onSubmit: (query: string) => void;
   loading: boolean;
+  mode: number;
+  onModeChange: (m: number) => void;
+  configOpen: boolean;
+  onConfigToggle: () => void;
 }
 
-export function ChatInput({ onSubmit, loading }: ChatInputProps) {
+export function ChatInput({ onSubmit, loading, mode, onModeChange, configOpen, onConfigToggle }: ChatInputProps) {
   const [query, setQuery] = useState('');
-  const [actionMode, setActionMode] = useState<ActionMode>('search');
-  const [queryMode, setQueryMode] = useState<QueryMode>('basic');
-  const [topK, setTopK] = useState(10);
-  const [retentionMode, setRetentionMode] = useState<RetentionMode>('prefer_recent');
+
   function handleSubmit() {
     const trimmed = query.trim();
     if (!trimmed || loading) return;
-    onSubmit(trimmed, actionMode, queryMode, topK, retentionMode);
+    onSubmit(trimmed);
+    setQuery('');
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
       e.preventDefault();
       handleSubmit();
     }
   }
 
   return (
-    <div className={styles.chatArea}>
-      <div className={styles.controlsRow}>
-        <Select
-          value={queryMode}
-          onChange={setQueryMode}
-          options={QUERY_MODE_OPTIONS}
-          size="small"
-          style={{ width: 112 }}
-        />
-        <div className={styles.topKControl}>
-          <span className={styles.controlLabel}>Top-K</span>
-          <InputNumber
-            value={topK}
-            onChange={v => setTopK(v ?? 10)}
-            min={1}
-            max={20}
-            size="small"
-            style={{ width: 56 }}
-          />
-        </div>
-        <Select
-          value={retentionMode}
-          onChange={setRetentionMode}
-          options={RETENTION_OPTIONS}
-          size="small"
-          style={{ width: 148 }}
-        />
+    <div className={styles.bar}>
+      {/* mode selector */}
+      <div className={styles.modeGroup}>
+        {MODES.map((m, i) => (
+          <span
+            key={m}
+            className={mode === i ? styles.modeActive : styles.modeItem}
+            onClick={() => onModeChange(i)}
+          >
+            {m}
+          </span>
+        ))}
       </div>
-      <div className={styles.inputRow}>
-        <Segmented
-          options={ACTION_SEGMENTS}
-          value={actionMode}
-          onChange={v => setActionMode(v as ActionMode)}
-          size="small"
-        />
-        <Input.TextArea
+
+      {/* query input */}
+      <div className={styles.inputWrap}>
+        <span className={styles.searchIcon}>⌕</span>
+        <input
+          type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Enter your query… (Enter to send, Shift+Enter for newline)"
-          autoSize={{ minRows: 1, maxRows: 6 }}
-          className={styles.textarea}
+          placeholder="Enter query…"
+          className={styles.input}
+          disabled={loading}
         />
-        <Button
-          type="primary"
-          icon={<SendOutlined />}
-          onClick={handleSubmit}
-          loading={loading}
-          disabled={!query.trim()}
-        >
-          Send
-        </Button>
       </div>
+
+      {/* config button */}
+      <button
+        className={configOpen ? styles.iconBtnActive : styles.iconBtn}
+        onClick={onConfigToggle}
+        title="Pipeline config"
+      >
+        ⚙
+      </button>
+
+      {/* send button */}
+      <button
+        className={styles.sendBtn}
+        onClick={handleSubmit}
+        disabled={!query.trim() || loading}
+        title="Send"
+      >
+        ↑
+      </button>
     </div>
   );
 }
