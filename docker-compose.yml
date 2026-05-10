@@ -7,7 +7,64 @@ services:
       - "6334:6334"   # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
+    networks:
+      - recall-net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: recall-backend
+    env_file:
+      - ./backend/.env
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: "6333"
+      SQLITE_PATH: /app/data/recall.db
+      UPLOAD_FILE_DIR: /app/data/files
+      CORS_ORIGINS: '["http://localhost", "http://localhost:80"]'
+    volumes:
+      - backend_data:/app/data
+    networks:
+      - recall-net
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/documents || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: recall-frontend
+    ports:
+      - "80:80"
+    networks:
+      - recall-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  recall-net:
+    driver: bridge
 
 volumes:
   qdrant_data:
+  backend_data:
