@@ -1,5 +1,6 @@
 export type RetentionMode = 'prefer_recent' | 'awaken_forgotten';
 export type QueryMode = 'basic' | 'rag_fusion' | 'hyde';
+export type ActionMode = 'search' | 'generate' | 'both';
 
 export interface ScoreDetail {
   retrieval_score: number;

@@ -1,0 +1,36 @@
+.chatArea {
+  flex: none;
+  border-top: 0.5px solid var(--border-default);
+  background: var(--bg-secondary);
+  padding: 10px 14px 14px;
+}
+
+.controlsRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.controlLabel {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.topKControl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inputRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.textarea {
+  flex: 1;
+  font-size: 13px;
+}
