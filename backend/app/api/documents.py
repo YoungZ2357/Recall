@@ -60,9 +60,9 @@ def _extract_file_type(source_path: str | None) -> str:
 
 
 def _extract_filename(source_path: str | None, title: str | None) -> str:
-    if source_path:
-        return FilePath(source_path).name
-    return title or "untitled"
+    # Prefer the stored title (display_name or content-extracted) over source_path.name,
+    # which may contain a UUID-prefixed temp filename from the upload pipeline.
+    return title or (FilePath(source_path).name if source_path else None) or "untitled"
 
 
 async def _get_chunk_stats(

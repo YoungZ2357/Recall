@@ -25,7 +25,7 @@ class TextParser(BaseParser):
             file_path: 文件路径。
 
         Returns:
-            ParseResult 实例，metadata 包含 source_path、file_type、title、file_size。
+            ParseResult 实例，metadata 包含 source_path、file_type、file_size。
 
         Raises:
             ParsingError: 文件编码无法解析或内容为空时抛出。
@@ -48,7 +48,6 @@ class TextParser(BaseParser):
         metadata = {
             "source_path": str(file_path),
             "file_type": file_path.suffix.lower(),
-            "title": file_path.stem,
             "file_size": file_path.stat().st_size,
         }
 

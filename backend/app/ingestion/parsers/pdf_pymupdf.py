@@ -28,7 +28,7 @@ class PyMuPDFParser(BaseParser):
 
         Returns:
             ParseResult with page text joined by double newlines.
-            metadata includes source_path, file_type, title, file_size, page_count.
+            metadata includes source_path, file_type, file_size, page_count.
 
         Raises:
             ParsingError: fitz cannot open the file or extracted text is empty.
@@ -56,7 +56,6 @@ class PyMuPDFParser(BaseParser):
         metadata = {
             "source_path": str(file_path),
             "file_type": file_path.suffix.lower(),
-            "title": file_path.stem,
             "file_size": file_path.stat().st_size,
             "page_count": page_count,
         }
