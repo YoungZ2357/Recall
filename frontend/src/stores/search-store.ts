@@ -3,7 +3,7 @@ import { fetchSearch } from '../api/search';
 import { streamGenerate } from '../api/generate';
 import { buildTopology } from '../api/topology-builder';
 import type { SearchResultItem } from '../api/types';
-import { DEFAULT_CONFIG, type SearchConfig } from '../components/config-panel';
+import { DEFAULT_CONFIG, type SearchConfig } from '../components/config-panel-config';
 import { readJSON, writeJSON } from './storage';
 
 const CONFIG_KEY = 'recall:search-config';

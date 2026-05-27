@@ -156,7 +156,6 @@ function DetailPane({
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    setChunksLoading(true);
     fetchDocumentChunks(doc.doc_id)
       .then(setChunks)
       .catch(() => void message.error('Failed to load chunks'))

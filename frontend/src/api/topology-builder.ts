@@ -1,4 +1,4 @@
-import type { SearchConfig } from '../components/config-panel';
+import type { SearchConfig } from '../components/config-panel-config';
 import type { NodeSpecJSON, TopologySpecJSON } from './types';
 
 // Compiles UI SearchConfig into the wire-level TopologySpecJSON consumed by
