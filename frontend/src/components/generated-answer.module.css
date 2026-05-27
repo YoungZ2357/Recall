@@ -29,6 +29,11 @@
   color: var(--text-primary);
 }
 
+/* Prevent the MarkdownRenderer wrapper div from adding extra top margin */
+.body > div {
+  margin-top: 0;
+}
+
 .citation {
   color: var(--accent);
   font-size: 11px;

@@ -9,6 +9,23 @@ import {
 import { useLibraryStore } from '../../stores/library-store';
 import styles from './library-page.module.css';
 
+/** Strip markdown syntax for the collapsed preview. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/(\*{1,3}|_{1,3})(.*?)\1/g, '$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^```[\s\S]*?```/gm, '')
+    .replace(/^>\s*/gm, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /* ── SyncBadge ── */
 
 function SyncBadge({ status }: { status: string }) {
@@ -98,11 +115,14 @@ function ChunkItem({ chunk, showTags }: { chunk: ChunkDetail; showTags: boolean 
         <div className={styles.chunkContext}>{chunk.context}</div>
       )}
 
+      {/* content — both states are plain text. Chunk content is treated as
+          raw text (no markdown rendering) to avoid # → heading and broken
+          $-formula parsing. Preview uses stripMarkdown for clean clamp. */}
       <div
         className={expanded ? styles.chunkContent : styles.chunkContentClamped}
         onClick={() => setExpanded(e => !e)}
       >
-        {chunk.content}
+        {expanded ? chunk.content : stripMarkdown(chunk.content)}
       </div>
       {!expanded && (
         <span className={styles.showMore} onClick={() => setExpanded(true)}>

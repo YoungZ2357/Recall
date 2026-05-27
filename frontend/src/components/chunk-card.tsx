@@ -4,6 +4,23 @@ import { CopyOutlined } from '@ant-design/icons';
 import type { SearchResultItem } from '../api/types';
 import styles from './chunk-card.module.css';
 
+/** Strip markdown syntax for the collapsed 2-line preview. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/(\*{1,3}|_{1,3})(.*?)\1/g, '$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^```[\s\S]*?```/gm, '')
+    .replace(/^>\s*/gm, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^[-*+]\s+/gm, '')
+    .replace(/^\d+\.\s+/gm, '')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 interface ChunkCardProps {
   item: SearchResultItem;
   rank: number;
@@ -93,12 +110,15 @@ export function ChunkCard({ item, rank, weights, showTitle = true }: ChunkCardPr
         </div>
       )}
 
-      {/* content — click to toggle */}
+      {/* content — click to toggle. Both states render plain text:
+          chunk content is treated as raw text to avoid # → heading and
+          unmatched $ formula errors. Preview uses stripMarkdown to keep
+          two-line clamp clean; expanded shows the source verbatim. */}
       <div
         className={expanded ? styles.contentFull : styles.contentPreview}
         onClick={() => setExpanded(e => !e)}
       >
-        {item.content}
+        {expanded ? item.content : stripMarkdown(item.content)}
       </div>
 
       {/* score bar row — reflects current mode */}

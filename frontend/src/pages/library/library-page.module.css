@@ -391,6 +391,7 @@
   border-left: 2px solid var(--border);
   line-height: 1.4;
   margin: 4px 0;
+  white-space: pre-wrap;
 }
 
 .chunkContent {
@@ -398,6 +399,8 @@
   line-height: 1.6;
   color: var(--text-secondary);
   cursor: pointer;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .chunkContentClamped {

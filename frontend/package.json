@@ -12,9 +12,14 @@
   "dependencies": {
     "@ant-design/icons": "^6.2.2",
     "antd": "^6.3.7",
+    "katex": "^0.16.47",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.14.2",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
