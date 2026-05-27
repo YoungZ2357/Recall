@@ -116,10 +116,14 @@ Dev server at `http://localhost:5173`, proxied to backend on port 8000.
 ### 4. Docker (full stack)
 
 ```bash
+# Prepare backend env file — required, compose will fail without it
+cp backend/.env.example backend/.env
+# Edit backend/.env — EMBEDDING_API_KEY is mandatory; LLM_API_KEY is optional (disables generation + auto-tagging)
+
 docker compose up -d
 ```
 
-Starts Qdrant, backend (port 8000), and frontend (port 80).
+Starts Qdrant, backend (proxied via nginx), and frontend on port 80. Visit `http://localhost`.
 
 ## Usage
 

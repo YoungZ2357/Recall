@@ -10,6 +10,12 @@ services:
     networks:
       - recall-net
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
   backend:
     build:
       context: ./backend
@@ -29,7 +35,8 @@ services:
     networks:
       - recall-net
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_healthy
     restart: unless-stopped
     expose:
       - "8000"
