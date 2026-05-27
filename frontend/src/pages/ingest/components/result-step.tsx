@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { IngestConfig, IngestTask, UploadFile } from '../../../types/ingest';
-import { startIngestion, pollTaskStatus } from '../../../api/ingest';
+import { useIngestStore } from '../../../stores/ingest-store';
 import { StageProgress } from './stage-progress';
 import styles from './result-step.module.css';
 
@@ -15,57 +14,42 @@ function formatDuration(startedAt: string, completedAt?: string): string {
 }
 
 interface ResultStepProps {
-  files: UploadFile[];
-  config: IngestConfig;
   onNewIngest: () => void;
 }
 
-export function ResultStep({ files, config, onNewIngest }: ResultStepProps) {
-  const navigate = useNavigate();
-  const [task, setTask] = useState<IngestTask | null>(null);
-  const taskIdRef = useRef<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+export function ResultStep({ onNewIngest }: ResultStepProps) {
+  const navigate     = useNavigate();
+  const task         = useIngestStore((s) => s.task);
+  const activeTaskId = useIngestStore((s) => s.activeTaskId);
+  const starting     = useIngestStore((s) => s.starting);
+  const startError   = useIngestStore((s) => s.startError);
+  const startTask    = useIngestStore((s) => s.startTask);
 
+  // Kick off ingestion the first time we land on this step.
+  // Store-level guards prevent duplicate launches under StrictMode or resume.
   useEffect(() => {
-    let cancelled = false;
-
-    async function init() {
-      const taskId = await startIngestion(files, config);
-      if (cancelled) return;
-      taskIdRef.current = taskId;
-
-      // Poll immediately then every 1000ms
-      async function poll() {
-        if (!taskIdRef.current || cancelled) return;
-        const t = await pollTaskStatus(taskIdRef.current, files);
-        if (cancelled) return;
-        setTask(t);
-        if (t.status === 'done') {
-          if (timerRef.current) clearInterval(timerRef.current);
-        }
-      }
-
-      await poll();
-      timerRef.current = setInterval(poll, 1000);
+    if (!activeTaskId && !task && !starting) {
+      void startTask();
     }
+  }, [activeTaskId, task, starting, startTask]);
 
-    init();
-
-    return () => {
-      cancelled = true;
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  if (startError) {
+    return (
+      <div className={styles.loading}>
+        启动失败：{startError}
+      </div>
+    );
+  }
 
   if (!task) {
     return <div className={styles.loading}>初始化中…</div>;
   }
 
   const totalChunks = task.files.reduce((sum, f) => sum + (f.chunkCount ?? 0), 0);
-  const writtenFiles = task.files.filter(f => f.status === 'done').length;
-  const failedFiles = task.files.filter(f => f.status === 'error');
+  const writtenFiles = task.files.filter((f) => f.status === 'done').length;
+  const failedFiles = task.files.filter((f) => f.status === 'error');
   const isDone = task.status === 'done';
-  const doneFiles = task.files.filter(f => f.status === 'done').length;
+  const doneFiles = task.files.filter((f) => f.status === 'done').length;
 
   return (
     <>
@@ -96,7 +80,7 @@ export function ResultStep({ files, config, onNewIngest }: ResultStepProps) {
       {/* Per-file progress */}
       <div className={styles.card}>
         <div className={styles.cardBody}>
-          {task.files.map(f => (
+          {task.files.map((f) => (
             <StageProgress key={f.fileId} fileStatus={f} />
           ))}
         </div>
@@ -126,7 +110,7 @@ export function ResultStep({ files, config, onNewIngest }: ResultStepProps) {
           {failedFiles.length > 0 && (
             <div className={styles.errorSummary}>
               <h3>⚠ {failedFiles.length} 个文件失败</h3>
-              {failedFiles.map(f => (
+              {failedFiles.map((f) => (
                 <div key={f.fileId} className={styles.errorFile}>
                   <span>{f.fileName}</span>
                   <span className={styles.errorMsg}>{f.error}</span>

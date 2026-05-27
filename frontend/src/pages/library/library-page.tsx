@@ -2,13 +2,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { message } from 'antd';
 import { AppNav } from '../../components/app-nav';
 import {
-  fetchDocuments,
   fetchDocumentChunks,
-  uploadDocument,
-  deleteDocument,
-  updateDocumentWeight,
+  type DocumentSummary,
+  type ChunkDetail,
 } from '../../api/documents';
-import type { DocumentSummary, ChunkDetail } from '../../api/documents';
+import { useLibraryStore } from '../../stores/library-store';
 import styles from './library-page.module.css';
 
 /* ── SyncBadge ── */
@@ -122,7 +120,7 @@ interface DetailPaneProps {
   showChunkTags: boolean;
   onToggleChunkTags: (v: boolean) => void;
   onDelete: (docId: string) => Promise<void>;
-  onWeightSaved: (docId: string, weight: number) => void;
+  onWeightSaved: (docId: string, weight: number) => Promise<void>;
 }
 
 function DetailPane({
@@ -148,8 +146,7 @@ function DetailPane({
   async function handleWeightBlur() {
     if (weight === doc.weight) return;
     try {
-      await updateDocumentWeight(doc.doc_id, weight);
-      onWeightSaved(doc.doc_id, weight);
+      await onWeightSaved(doc.doc_id, weight);
     } catch {
       void message.error('Failed to update weight');
       setWeight(doc.weight);
@@ -244,23 +241,27 @@ function DetailPane({
 /* ── LibraryPage ── */
 
 export function LibraryPage() {
-  const [docs, setDocs] = useState<DocumentSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [filterText, setFilterText] = useState('');
-  const [showChunkTags, setShowChunkTags] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const docs            = useLibraryStore((s) => s.docs);
+  const loaded          = useLibraryStore((s) => s.loaded);
+  const loading         = useLibraryStore((s) => s.loading);
+  const selectedDocId   = useLibraryStore((s) => s.selectedDocId);
+  const filterText      = useLibraryStore((s) => s.filterText);
+  const showChunkTags   = useLibraryStore((s) => s.showChunkTags);
+  const uploading       = useLibraryStore((s) => s.uploading);
+
+  const loadIfNeeded    = useLibraryStore((s) => s.loadIfNeeded);
+  const setSelected     = useLibraryStore((s) => s.setSelected);
+  const setFilter       = useLibraryStore((s) => s.setFilter);
+  const setShowChunkTags = useLibraryStore((s) => s.setShowChunkTags);
+  const removeDoc       = useLibraryStore((s) => s.removeDoc);
+  const patchWeight     = useLibraryStore((s) => s.patchWeight);
+  const uploadFile      = useLibraryStore((s) => s.uploadFile);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchDocuments()
-      .then(data => {
-        setDocs(data);
-        if (data.length > 0) setSelectedDocId(data[0].doc_id);
-      })
-      .catch(() => void message.error('Failed to load documents'))
-      .finally(() => setLoading(false));
-  }, []);
+    void loadIfNeeded();
+  }, [loadIfNeeded]);
 
   const filteredDocs = useMemo(() => {
     if (!filterText.trim()) return docs;
@@ -273,33 +274,29 @@ export function LibraryPage() {
 
   const totalChunks = docs.reduce((s, d) => s + d.chunk_count, 0);
 
-  function handleWeightSaved(docId: string, weight: number) {
-    setDocs(prev => prev.map(d => d.doc_id === docId ? { ...d, weight } : d));
+  async function handleDeleteDoc(docId: string) {
+    await removeDoc(docId);
+    void message.success('Document deleted');
   }
 
-  async function handleDeleteDoc(docId: string) {
-    await deleteDocument(docId);
-    setDocs(prev => prev.filter(d => d.doc_id !== docId));
-    void message.success('Document deleted');
+  async function handleWeightSaved(docId: string, weight: number) {
+    await patchWeight(docId, weight);
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true);
     try {
-      const resp = await uploadDocument(file);
-      const newDocs = await fetchDocuments();
-      setDocs(newDocs);
-      setSelectedDocId(resp.doc_id);
+      await uploadFile(file);
       void message.success(`Uploaded ${file.name}`);
     } catch {
       void message.error('Upload failed');
     } finally {
-      setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
+
+  const showInitialLoading = loading && !loaded;
 
   return (
     <div className={styles.shell}>
@@ -311,7 +308,7 @@ export function LibraryPage() {
           <input
             type="text"
             value={filterText}
-            onChange={e => setFilterText(e.target.value)}
+            onChange={e => setFilter(e.target.value)}
             placeholder="Filter by title…"
             className={styles.filterInput}
           />
@@ -337,7 +334,7 @@ export function LibraryPage() {
 
       <div className={styles.body}>
         <div className={styles.docList}>
-          {loading ? (
+          {showInitialLoading ? (
             <div className={styles.loadingState}>Loading…</div>
           ) : filteredDocs.length === 0 ? (
             <div className={styles.loadingState}>
@@ -349,7 +346,7 @@ export function LibraryPage() {
                 key={doc.doc_id}
                 doc={doc}
                 active={selectedDoc?.doc_id === doc.doc_id}
-                onClick={() => setSelectedDocId(doc.doc_id)}
+                onClick={() => setSelected(doc.doc_id)}
               />
             ))
           )}
@@ -367,7 +364,7 @@ export function LibraryPage() {
             />
           ) : (
             <div className={styles.emptyState}>
-              {loading ? 'Loading…' : 'Upload a document to get started'}
+              {showInitialLoading ? 'Loading…' : 'Upload a document to get started'}
             </div>
           )}
         </div>

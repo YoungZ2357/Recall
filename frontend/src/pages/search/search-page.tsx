@@ -1,15 +1,11 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { message } from 'antd';
 import { AppNav } from '../../components/app-nav';
 import { ChatInput } from '../../components/chat-input';
 import { ChunkCard } from '../../components/chunk-card';
-import { ConfigPanel, DEFAULT_CONFIG } from '../../components/config-panel';
+import { ConfigPanel } from '../../components/config-panel';
 import { GeneratedAnswer } from '../../components/generated-answer';
-import { fetchSearch } from '../../api/search';
-import { streamGenerate } from '../../api/generate';
-import { buildTopology } from '../../api/topology-builder';
-import type { SearchResultItem, TopologySpecJSON } from '../../api/types';
-import type { SearchConfig } from '../../components/config-panel';
+import { useSearchStore } from '../../stores/search-store';
 import styles from './search-page.module.css';
 
 const SCORE_COLORS = {
@@ -18,21 +14,14 @@ const SCORE_COLORS = {
   retention: 'var(--signal-retention)',
 };
 
-const TOPO_LABELS: Record<SearchConfig['topo'], string> = {
-  vector_only: 'Vector only',
-  bm25_only:   'BM25 only',
-  rrf:         'Vector + BM25',
-  custom:      'Custom',
-};
-
-interface SearchMeta {
+interface MetaBarProps {
   ms: number;
   topo: string;
   rewrite: string;
   count: number;
 }
 
-function MetaBar({ ms, topo, rewrite, count }: SearchMeta) {
+function MetaBar({ ms, topo, rewrite, count }: MetaBarProps) {
   return (
     <div className={styles.metaBar}>
       <span>⏱ {ms}ms</span>
@@ -55,70 +44,35 @@ function MetaBar({ ms, topo, rewrite, count }: SearchMeta) {
 }
 
 export function SearchPage() {
-  const [mode, setMode] = useState(0);
-  const [configOpen, setConfigOpen] = useState(false);
-  const [sourcesOpen, setSourcesOpen] = useState(true);
-  const [config, setConfig] = useState<SearchConfig>(DEFAULT_CONFIG);
+  const mode          = useSearchStore((s) => s.mode);
+  const config        = useSearchStore((s) => s.config);
+  const results       = useSearchStore((s) => s.results);
+  const generated     = useSearchStore((s) => s.generated);
+  const meta          = useSearchStore((s) => s.meta);
+  const loading       = useSearchStore((s) => s.loading);
+  const streaming     = useSearchStore((s) => s.streaming);
+  const configOpen    = useSearchStore((s) => s.configOpen);
+  const sourcesOpen   = useSearchStore((s) => s.sourcesOpen);
+  const errorMessage  = useSearchStore((s) => s.errorMessage);
 
-  const [results, setResults] = useState<SearchResultItem[]>([]);
-  const [generated, setGenerated] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [meta, setMeta] = useState<SearchMeta | null>(null);
+  const setMode       = useSearchStore((s) => s.setMode);
+  const setConfig     = useSearchStore((s) => s.setConfig);
+  const toggleConfig  = useSearchStore((s) => s.toggleConfig);
+  const setConfigOpen = useSearchStore((s) => s.setConfigOpen);
+  const toggleSources = useSearchStore((s) => s.toggleSources);
+  const submit        = useSearchStore((s) => s.submit);
+  const clearError    = useSearchStore((s) => s.clearError);
+
+  useEffect(() => {
+    if (errorMessage) {
+      void message.error(errorMessage);
+      clearError();
+    }
+  }, [errorMessage, clearError]);
 
   const showGenerate = mode >= 1;
   const showChunks   = mode <= 1;
   const hasContent   = results.length > 0 || generated.length > 0;
-
-  function patchConfig(patch: Partial<SearchConfig>) {
-    setConfig(prev => ({ ...prev, ...patch }));
-  }
-
-  async function runStreamGenerate(query: string, topology: TopologySpecJSON) {
-    setStreaming(true);
-    try {
-      for await (const frame of streamGenerate({ query, top_k: config.topK, mode: config.retention, topology })) {
-        if (frame.kind === 'token') {
-          setGenerated(prev => prev + frame.content);
-        }
-        // 'sources' and 'unknown' frames are intentionally ignored for now.
-      }
-    } finally {
-      setStreaming(false);
-    }
-  }
-
-  async function handleSubmit(query: string) {
-    let topology: TopologySpecJSON;
-    try {
-      topology = buildTopology(config);
-    } catch (e) {
-      void message.error(e instanceof Error ? e.message : 'Invalid topology config');
-      return;
-    }
-
-    setLoading(true);
-    setGenerated('');
-    const t0 = Date.now();
-
-    try {
-      const searchPromise = showChunks
-        ? fetchSearch({ query, top_k: config.topK, mode: config.retention, topology })
-        : Promise.resolve([] as SearchResultItem[]);
-
-      const generatePromise = showGenerate
-        ? runStreamGenerate(query, topology)
-        : Promise.resolve();
-
-      const [data] = await Promise.all([searchPromise, generatePromise]);
-      setResults(data);
-      setMeta({ ms: Date.now() - t0, topo: TOPO_LABELS[config.topo], rewrite: config.rewrite, count: data.length });
-    } catch {
-      void message.error('Request failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <div className={styles.shell}>
@@ -137,7 +91,7 @@ export function SearchPage() {
               <>
                 <div
                   className={styles.sourcesToggle}
-                  onClick={() => setSourcesOpen(o => !o)}
+                  onClick={toggleSources}
                 >
                   <span
                     className={styles.toggleArrow}
@@ -171,16 +125,16 @@ export function SearchPage() {
         open={configOpen}
         onClose={() => setConfigOpen(false)}
         config={config}
-        onChange={patchConfig}
+        onChange={setConfig}
       />
 
       <ChatInput
-        onSubmit={handleSubmit}
+        onSubmit={submit}
         loading={loading}
         mode={mode}
         onModeChange={setMode}
         configOpen={configOpen}
-        onConfigToggle={() => setConfigOpen(o => !o)}
+        onConfigToggle={toggleConfig}
       />
     </div>
   );

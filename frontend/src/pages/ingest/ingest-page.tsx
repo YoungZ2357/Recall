@@ -1,60 +1,28 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { AppNav } from '../../components/app-nav';
 import { IngestStepper } from './components/ingest-stepper';
 import { UploadStep } from './components/upload-step';
 import { ConfigureStep } from './components/configure-step';
 import { ReviewStep } from './components/review-step';
 import { ResultStep } from './components/result-step';
-import type { IngestConfig, UploadFile } from '../../types/ingest';
+import { useIngestStore } from '../../stores/ingest-store';
 import styles from './ingest-page.module.css';
 
-export const DEFAULT_INGEST_CONFIG: IngestConfig = {
-  pdfParser: 'pymupdf',
-  stripTail: true,
-  stripMarkdown: false,
-  chunkStrategy: 'recursive',
-  chunkSize: 512,
-  chunkOverlap: 64,
-  targetChunks: 20,
-  overlapRatio: 0.1,
-  contextualize: true,
-  contextConcurrency: 8,
-  autoTag: true,
-};
-
 export function IngestPage() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [files, setFiles] = useState<UploadFile[]>([]);
-  const [config, setConfig] = useState<IngestConfig>(DEFAULT_INGEST_CONFIG);
+  const currentStep      = useIngestStore((s) => s.currentStep);
+  const files            = useIngestStore((s) => s.files);
+  const config           = useIngestStore((s) => s.config);
 
-  function addFiles(newFiles: File[]) {
-    const mapped: UploadFile[] = newFiles.map(f => {
-      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
-      const type = (ext === 'pdf' ? 'pdf' : ext === 'md' ? 'md' : 'txt') as UploadFile['type'];
-      return {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        file: f,
-        name: f.name,
-        size: f.size,
-        type,
-      };
-    });
-    setFiles(prev => [...prev, ...mapped]);
-  }
+  const addFiles         = useIngestStore((s) => s.addFiles);
+  const removeFile       = useIngestStore((s) => s.removeFile);
+  const setConfig        = useIngestStore((s) => s.setConfig);
+  const setStep          = useIngestStore((s) => s.setStep);
+  const resetWizard      = useIngestStore((s) => s.resetWizard);
+  const resumeIfPending  = useIngestStore((s) => s.resumeIfPending);
 
-  function removeFile(id: string) {
-    setFiles(prev => prev.filter(f => f.id !== id));
-  }
-
-  function updateConfig(partial: Partial<IngestConfig>) {
-    setConfig(prev => ({ ...prev, ...partial }));
-  }
-
-  function resetWizard() {
-    setCurrentStep(0);
-    setFiles([]);
-    setConfig(DEFAULT_INGEST_CONFIG);
-  }
+  useEffect(() => {
+    void resumeIfPending();
+  }, [resumeIfPending]);
 
   return (
     <div className={styles.shell}>
@@ -73,16 +41,16 @@ export function IngestPage() {
               files={files}
               onAddFiles={addFiles}
               onRemoveFile={removeFile}
-              onNext={() => setCurrentStep(1)}
+              onNext={() => setStep(1)}
             />
           )}
 
           {currentStep === 1 && (
             <ConfigureStep
               config={config}
-              onConfigChange={updateConfig}
-              onBack={() => setCurrentStep(0)}
-              onNext={() => setCurrentStep(2)}
+              onConfigChange={setConfig}
+              onBack={() => setStep(0)}
+              onNext={() => setStep(2)}
             />
           )}
 
@@ -90,17 +58,13 @@ export function IngestPage() {
             <ReviewStep
               files={files}
               config={config}
-              onBack={() => setCurrentStep(1)}
-              onStart={() => setCurrentStep(3)}
+              onBack={() => setStep(1)}
+              onStart={() => setStep(3)}
             />
           )}
 
           {currentStep === 3 && (
-            <ResultStep
-              files={files}
-              config={config}
-              onNewIngest={resetWizard}
-            />
+            <ResultStep onNewIngest={resetWizard} />
           )}
         </div>
       </div>

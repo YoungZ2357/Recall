@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import { SearchPage } from './pages/search/search-page';
 import { LibraryPage } from './pages/library/library-page';
 import { IngestPage } from './pages/ingest/ingest-page';
+import { useIngestStore } from './stores/ingest-store';
 
 const COMING_SOON_ROUTES = ['/eval'];
 
@@ -15,6 +17,10 @@ function ComingSoon({ name }: { name: string }) {
 }
 
 function App() {
+  useEffect(() => {
+    void useIngestStore.getState().resumeIfPending();
+  }, []);
+
   return (
     <ConfigProvider
       theme={{

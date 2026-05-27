@@ -86,10 +86,7 @@ export async function startIngestion(
   return task_id;
 }
 
-export async function pollTaskStatus(
-  taskId: string,
-  _files: UploadFile[],
-): Promise<IngestTask> {
+export async function pollTaskStatus(taskId: string): Promise<IngestTask> {
   const res = await fetch(`/api/ingest/${taskId}`);
   const data = await handleResponse<TaskStatusResponse>(res);
 
