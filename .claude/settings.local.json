@@ -8,7 +8,8 @@
       "Bash(docker run *)",
       "Bash(docker compose *)",
       "PowerShell(Get-ChildItem -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\" -Recurse -Directory | Where-Object { $_.Name -eq \"pages\" -or $_.Name -eq \"api\" -or $_.Name -eq \"services\" } | Select-Object FullName)",
-      "Bash(cd frontend *)"
+      "Bash(cd frontend *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\\\\frontend\\\\src\\\\pages\\\\search\\\\\" -Recurse | Select-Object FullName)"
     ]
   }
 }

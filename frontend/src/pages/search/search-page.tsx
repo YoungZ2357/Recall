@@ -149,7 +149,12 @@ export function SearchPage() {
                 </div>
 
                 {sourcesOpen && results.map((item, i) => (
-                  <ChunkCard key={item.chunk_id} item={item} rank={i + 1} />
+                  <ChunkCard
+                    key={item.chunk_id}
+                    item={item}
+                    rank={i + 1}
+                    weights={{ alpha: config.alpha, beta: config.beta, gamma: config.gamma }}
+                  />
                 ))}
               </>
             )}

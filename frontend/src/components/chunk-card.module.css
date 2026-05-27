@@ -106,7 +106,7 @@
 
 .detailLabel {
   font-size: 11px;
-  min-width: 60px;
+  min-width: 80px;  /* wider to fit "retrieval×α" */
   font-weight: 500;
 }
 
@@ -121,6 +121,19 @@
 .detailFill {
   height: 100%;
   border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.toggleLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .detailValue {
