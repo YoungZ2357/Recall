@@ -39,7 +39,7 @@ class MinerUParser(BaseParser):
     """Parse PDF via MinerU Precision Cloud API, returning Markdown text.
 
     Not auto-registered. Use --pdf-parser mineru in the ingest CLI to select it.
-    Requires MINERU_API_KEY environment variable.
+    Requires MINERU_API environment variable.
     """
 
     supported_extensions: ClassVar[set[str]] = {".pdf"}
@@ -77,7 +77,7 @@ class MinerUParser(BaseParser):
                 )
             except OSError as exc:
                 raise ParsingError(
-                    message="MINERU_API_KEY 未设置，无法使用 MinerU 解析器",
+                    message="MINERU_API 未设置，无法使用 MinerU 解析器",
                     detail=str(exc),
                 ) from exc
             except _MinerUError as exc:
@@ -87,18 +87,21 @@ class MinerUParser(BaseParser):
                 ) from exc
 
             content = md_path.read_text(encoding="utf-8").strip()
-            title = _extract_title_from_json(json_path) or file_path.stem
+            title = _extract_title_from_json(json_path)
 
         if not content:
             raise ParsingError(message=f"MinerU 解析结果为空：{file_path}")
 
-        metadata = {
+        metadata: dict = {
             "source_path": str(file_path),
             "file_type": file_path.suffix.lower(),
-            "title": title,
             "file_size": file_path.stat().st_size,
             "parser": "mineru",
         }
+        # Only set title when extracted from content; filename-based fallback is
+        # handled by the pipeline using display_name, avoiding UUID-prefixed temp names.
+        if title:
+            metadata["title"] = title
 
         return ParseResult(content=content, metadata=metadata)
 

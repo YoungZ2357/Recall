@@ -10,6 +10,8 @@ from app.api import router
 from app.cli._init_deps import init_deps, teardown_deps
 from app.config import settings
 from app.core.exceptions import RecallError
+from app.core.runtime_overrides import RuntimeOverrideManager
+from app.services.task_store import TaskStore
 
 
 @asynccontextmanager
@@ -25,6 +27,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.generator = resources.generator
     app.state.ingestion_service = resources.ingestion_service
     app.state.reindex_service = resources.reindex_service
+    app.state.task_store = TaskStore()
+    app.state.upload_store: dict[str, str] = {}  # file_id -> abs temp_path
+    app.state.overrides = RuntimeOverrideManager(settings)
 
     # Seed builtin topology configs
     async with resources.session_factory() as session:

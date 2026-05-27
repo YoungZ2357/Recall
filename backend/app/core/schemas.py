@@ -118,6 +118,21 @@ class DeleteResponse(BaseModel):
     doc_id: str
 
 
+class ChunkDetail(BaseModel):
+    """GET /api/documents/{doc_id}/chunks list item."""
+    chunk_id: str
+    chunk_index: int
+    content: str
+    context: str | None
+    tags: list[str]
+    sync_status: str
+
+
+class WeightUpdate(BaseModel):
+    """PATCH /api/documents/{doc_id}/weight request body."""
+    weight: float = Field(ge=0.0, le=2.0)
+
+
 # ============================================================
 # Search API schemas
 # ============================================================
@@ -153,3 +168,99 @@ class SourceInfo(BaseModel):
     doc_id: str
     filename: str
     chunk_id: str
+
+
+# ============================================================
+# Ingest task schemas (POST /api/upload, POST /api/ingest, GET /api/ingest/{task_id})
+# ============================================================
+
+
+class TempFileInfo(BaseModel):
+    """Single file info returned by POST /api/upload."""
+    file_id: str
+    filename: str
+    size: int
+    file_hash: str
+
+
+class TempUploadResponse(BaseModel):
+    """POST /api/upload response."""
+    files: list[TempFileInfo]
+
+
+class IngestRequest(BaseModel):
+    """POST /api/ingest request body."""
+    file_ids: list[str]
+    # Client-supplied task UUID. When present, the backend uses it as-is so the
+    # client can persist the task_id before the request flies (eliminates the
+    # race window where the backend creates a task but the client never learns
+    # its id). Omit to let the backend generate one (CLI / legacy callers).
+    task_id: str | None = None
+    pdf_parser: Literal["pymupdf", "marker", "mineru"] = "pymupdf"
+    strip_tail: bool = True
+    strip_markdown: bool = False
+    chunk_strategy: Literal["recursive", "fixed_count"] = "recursive"
+    chunk_size: int = Field(default=512, ge=1)
+    chunk_overlap: int = Field(default=64, ge=0)
+    target_chunks: int = Field(default=20, ge=1)
+    overlap_ratio: float = Field(default=0.1, ge=0.0, le=1.0)
+    contextualize: bool = True
+    context_concurrency: int = Field(default=8, ge=1)
+    auto_tag: bool = True
+
+
+class IngestResponse(BaseModel):
+    """POST /api/ingest response."""
+    task_id: str
+
+
+class StageProgressResponse(BaseModel):
+    stage: str
+    status: str
+    detail: str
+    current: int
+    total: int
+
+
+class FileTaskProgressResponse(BaseModel):
+    file_id: str
+    filename: str
+    status: str
+    stages: list[StageProgressResponse]
+    error: str | None
+    chunk_count: int
+    tags: list[str]
+
+
+class TaskStatusResponse(BaseModel):
+    """GET /api/ingest/{task_id} response."""
+    task_id: str
+    status: str
+    files: list[FileTaskProgressResponse]
+    started_at: str | None
+    completed_at: str | None
+
+
+# ============================================================
+# Post-op document operation schemas
+# ============================================================
+
+
+class RetagRequest(BaseModel):
+    """POST /api/documents/{doc_id}/retag request body."""
+    tags: list[str] | None = None  # None = auto-regenerate via LLM
+
+
+# ============================================================
+# System stats schema
+# ============================================================
+
+
+class SystemStatsResponse(BaseModel):
+    """GET /api/stats response."""
+    document_count: int
+    chunk_count: int
+    synced_count: int
+    dirty_count: int
+    failed_count: int
+    last_ingestion_at: str | None

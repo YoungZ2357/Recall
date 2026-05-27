@@ -87,10 +87,14 @@ class IngestionService:
         strategy: str,
         chunk_size: int,
         chunk_overlap: int,
+        target_chunks: int = 20,
+        overlap_ratio: float = 0.1,
     ) -> BaseChunker:
         kwargs: dict = {}
         if strategy == "recursive":
             kwargs = {"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
+        elif strategy == "fixed_count":
+            kwargs = {"target_chunks": target_chunks, "overlap_ratio": overlap_ratio}
         return get_chunker(strategy, **kwargs)
 
     async def ingest_file(
@@ -101,6 +105,8 @@ class IngestionService:
         strategy: str = "recursive",
         chunk_size: int = 512,
         chunk_overlap: int = 64,
+        target_chunks: int = 20,
+        overlap_ratio: float = 0.1,
         contextualize: bool = False,
         contextualizer: ContextGenerator | None = None,
         tagger: AutoTagger | None = None,
@@ -108,6 +114,7 @@ class IngestionService:
         strip_markdown: bool = False,
         stage_callback: Callable[[str], None] | None = None,
         on_chunk_count: Callable[[int], None] | None = None,
+        display_name: str | None = None,
     ) -> Document:
         """Ingest a single file end-to-end through the ingestion pipeline.
 
@@ -115,7 +122,9 @@ class IngestionService:
             The created Document ORM object.
         """
         parser_factory = self._resolve_parser_factory(pdf_parser)
-        chunker = self._resolve_chunker(strategy, chunk_size, chunk_overlap)
+        chunker = self._resolve_chunker(
+            strategy, chunk_size, chunk_overlap, target_chunks, overlap_ratio
+        )
 
         pipeline = IngestionPipeline(
             parser_factory=parser_factory,
@@ -133,6 +142,7 @@ class IngestionService:
             file_path,
             stage_callback=stage_callback,
             on_chunk_count=on_chunk_count,
+            display_name=display_name,
         )
 
         self.last_filter_result = pipeline.last_filter_result

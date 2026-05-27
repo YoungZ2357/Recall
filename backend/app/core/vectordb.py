@@ -6,6 +6,7 @@ All Qdrant SDK exceptions are converted to project-specific exceptions.
 """
 
 import logging
+import os
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import (
@@ -17,9 +18,9 @@ from qdrant_client.models import (
     Filter,
     PointIdsList,
     PointStruct,
+    QueryRequest,
     Record,
     ScoredPoint,
-    SearchRequest,
 )
 
 from app.config import settings
@@ -69,6 +70,12 @@ class QdrantService:
         if self.client is not None:
             return
         try:
+            # Bypass system proxy for local Qdrant — proxies intercept localhost traffic
+            for key in ("NO_PROXY", "no_proxy"):
+                current = os.environ.get(key, "")
+                entries = {e.strip() for e in current.split(",") if e.strip()}
+                entries.update({"localhost", "127.0.0.1"})
+                os.environ[key] = ",".join(entries)
             self.client = AsyncQdrantClient(host=self.host, port=self.port)
             logger.info(f"Connected to Qdrant at {self.host}:{self.port}")
         except Exception as e:
@@ -281,23 +288,25 @@ class QdrantService:
         """
         self._ensure_connected()
         try:
-            return await self.client.search(
+            result = await self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 limit=top_k,
                 score_threshold=score_threshold,
                 query_filter=query_filter,
+                with_payload=True,
             )
+            return result.points
         except Exception as e:
             raise VectorDBError(f"Failed to search: {e}") from e
 
-    async def search_batch(self, queries: list[SearchRequest]) -> list[list[ScoredPoint]]:
+    async def search_batch(self, queries: list[QueryRequest]) -> list[list[ScoredPoint]]:
         """Batch ANN search.
 
         Single RPC with multiple queries, used for RAG-Fusion scenarios.
 
         Args:
-            queries: List of SearchRequest objects
+            queries: List of QueryRequest objects
 
         Returns:
             List of search results for each query
@@ -307,10 +316,11 @@ class QdrantService:
         """
         self._ensure_connected()
         try:
-            return await self.client.search_batch(
+            results = await self.client.query_batch_points(
                 collection_name=self.collection_name,
                 requests=queries,
             )
+            return [r.points for r in results]
         except Exception as e:
             raise VectorDBError(f"Failed to search batch: {e}") from e
 

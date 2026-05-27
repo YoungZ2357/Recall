@@ -1,0 +1,48 @@
+.root {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--border-default);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.track {
+  height: 4px;
+  flex: 1;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.value {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.formula {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 6px;
+  font-family: var(--font-mono);
+}

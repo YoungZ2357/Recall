@@ -1,0 +1,48 @@
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.icon {
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.body {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-primary);
+}
+
+/* Prevent the MarkdownRenderer wrapper div from adding extra top margin */
+.body > div {
+  margin-top: 0;
+}
+
+.citation {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  vertical-align: super;
+}
+
+.placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}

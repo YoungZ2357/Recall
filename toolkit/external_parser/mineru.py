@@ -12,7 +12,7 @@ Examples:
     python toolkit/external_parser/mineru.py paper.pdf ./output --model vlm --language en -v
 
 Environment variables (loaded from .env if present):
-    MINERU_API_KEY          Required. Bearer token for MinerU Precision API.
+    MINERU_API              Required. Bearer token for MinerU Precision API.
     MINERU_MODEL_VERSION    pipeline | vlm  (default: pipeline)
     MINERU_POLL_INTERVAL    Seconds between status polls (default: 3)
     MINERU_POLL_MAX_RETRIES Max poll attempts before timeout (default: 60)
@@ -318,7 +318,7 @@ def parse_pdf(
         enable_table: Extract tables as HTML. Requires model support.
         poll_interval: Seconds between task status polls.
         poll_max_retries: Max poll attempts before raising a timeout error.
-        api_key: MinerU API key. Falls back to MINERU_API_KEY env var.
+        api_key: MinerU API key. Falls back to MINERU_API env var.
 
     Returns:
         (md_path, json_path) — absolute paths of written files.
@@ -326,16 +326,16 @@ def parse_pdf(
 
     Raises:
         FileNotFoundError: input file does not exist.
-        EnvironmentError: MINERU_API_KEY is not set.
+        EnvironmentError: MINERU_API is not set.
         MinerUError: any API or processing failure.
     """
     if not file_path.is_file():
         raise FileNotFoundError(f"Input file not found: {file_path}")
 
-    resolved_key = api_key or os.environ.get("MINERU_API_KEY", "")
+    resolved_key = api_key or os.environ.get("MINERU_API", "")
     if not resolved_key:
         raise EnvironmentError(
-            "MINERU_API_KEY is not set. "
+            "MINERU_API is not set. "
             "Add it to your .env file or export it as an environment variable."
         )
 

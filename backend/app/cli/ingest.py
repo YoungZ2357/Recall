@@ -229,7 +229,7 @@ async def _ingest_single(
     filter_suffix = _filter_suffix(service, filtering_active)
     console.print(
         f"[green]\u2713[/green] {path.name} \u2192 "
-        f"doc_id={doc.document_id}, status={doc.sync_status.value}"
+        f"doc_id={doc.document_id}, status={doc.sync_status}"
         f"{filter_suffix}"
     )
 

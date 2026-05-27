@@ -11,6 +11,7 @@ from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.embedder import APIEmbedder
 from app.services import GenerationService, IngestionService, ReindexService, SearchService
+from app.services.task_store import TaskStore
 
 # --- Base resources (extracted from app.state) ---
 
@@ -66,11 +67,13 @@ def get_ingestion_service(
     qdrant: Annotated[QdrantService, Depends(get_qdrant)],
     embedder: Annotated[APIEmbedder, Depends(get_embedder)],
     session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> IngestionService:
     return IngestionService(
         session_factory=session_factory,
         qdrant_client=qdrant,
         embedder=embedder,
+        mineru_api_key=settings.mineru_api_key,
     )
 
 
@@ -86,6 +89,10 @@ def get_reindex_service(
     )
 
 
+def get_task_store(request: Request) -> TaskStore:
+    return request.app.state.task_store
+
+
 # --- Type aliases (for concise route annotations) ---
 
 QdrantDep = Annotated[QdrantService, Depends(get_qdrant)]
@@ -97,3 +104,4 @@ GeneratorDep = Annotated[LLMGenerator, Depends(get_generator)]
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
 GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]
 ReindexServiceDep = Annotated[ReindexService, Depends(get_reindex_service)]
+TaskStoreDep = Annotated[TaskStore, Depends(get_task_store)]

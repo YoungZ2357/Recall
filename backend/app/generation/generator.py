@@ -16,10 +16,21 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1.0
 
+# Math-delimiter convention: the frontend renders markdown via remark-math +
+# rehype-katex, which only recognizes $...$ / $$...$$. The LaTeX-native
+# \(...\) and \[...\] delimiters get eaten by CommonMark's backslash-escape
+# rules before the math plugin sees them, leaving raw source on screen.
+_MATH_DELIMITER_RULE = (
+    "When writing mathematical expressions, use $...$ for inline math "
+    "and $$...$$ for block math. Never use \\(...\\) or \\[...\\] — "
+    "those delimiters will not render."
+)
+
 _SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the user's question based on the provided context. "
     "If the context does not contain enough information, say so honestly."
     "If no question is provided, summarize the content relating to the query."
+    f"\n\n{_MATH_DELIMITER_RULE}"
 )
 
 _FREE_SYSTEM_PROMPT = (
@@ -33,6 +44,7 @@ _FREE_SYSTEM_PROMPT = (
     "This section is clearly distinguished from the knowledge base content.\n\n"
     "**Summary**\n"
     "A brief integrated conclusion combining both sources."
+    f"\n\n{_MATH_DELIMITER_RULE}"
 )
 
 

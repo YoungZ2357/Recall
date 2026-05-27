@@ -10,27 +10,27 @@ from pydantic import BaseModel
 
 
 class VectorSearcherConfig(BaseModel, frozen=True):
-    score_threshold: float = 0.35
+    score_threshold: float = 0.2
     top_k: int = 10
     collection_name: str = "recall"
 
 
 class BM25SearcherConfig(BaseModel, frozen=True):
-    score_threshold: float = 0.35
+    score_threshold: float = 0.2
     top_k: int = 10
     recall_multiplier: int = 2
 
 
 class ContextualBM25SearcherConfig(BaseModel, frozen=True):
-    score_threshold: float = 0.35
+    score_threshold: float = 0.2
     top_k: int = 10
     recall_multiplier: int = 2
 
 
 class RerankerConfig(BaseModel, frozen=True):
-    alpha: float = 0.6
-    beta: float = 0.2
-    gamma: float = 0.2
+    alpha: float = 0.85
+    beta: float = 0.15
+    gamma: float = 0.0
     score_threshold: float = 0.60
     retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent"
     s_base: float = 24.0

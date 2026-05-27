@@ -1,0 +1,182 @@
+.panel {
+  position: absolute;
+  bottom: 61px; /* sits just above the bottom bar */
+  left: 16px;
+  right: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-lg);
+  padding: 16px 20px;
+  z-index: 10;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.panelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.closeBtn {
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.closeBtn:hover {
+  color: var(--text-primary);
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.sectionGap {
+  height: 14px;
+}
+
+.pillGroup {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.pill {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-weight: 400;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.pill:hover {
+  border-color: var(--border-emphasis, var(--border));
+  color: var(--text-primary);
+}
+
+.pillActive {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.jsonSection {
+  margin-bottom: 14px;
+}
+
+.jsonTextarea {
+  width: 100%;
+  min-height: 120px;
+  max-height: 200px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.jsonTextareaError {
+  composes: jsonTextarea;
+  border-color: #E24B4A;
+}
+
+.jsonErrorMsg {
+  font-size: 11px;
+  color: #E24B4A;
+  margin-top: 4px;
+}
+
+.jsonOkMsg {
+  font-size: 11px;
+  color: var(--signal-metadata);
+  margin-top: 4px;
+}
+
+.inlineRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inlineLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 36px;
+}
+
+.numInput {
+  width: 60px;
+  height: 28px;
+  font-size: 13px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-primary);
+  padding: 0 8px;
+  text-align: center;
+  outline: none;
+}
+
+.numInput:focus {
+  border-color: var(--accent);
+}
+
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sliderLabel {
+  font-size: 12px;
+  min-width: 80px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.slider {
+  flex: 1;
+  height: 4px;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.sliderValue {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 32px;
+  text-align: right;
+}

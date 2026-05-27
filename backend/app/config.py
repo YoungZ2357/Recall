@@ -52,15 +52,15 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.7, alias="LLM_TEMPERATURE")
 
     # Reranker
-    reranker_alpha: float = Field(default=0.6, alias="RERANKER_ALPHA")
-    reranker_beta: float = Field(default=0.2, alias="RERANKER_BETA")
-    reranker_gamma: float = Field(default=0.2, alias="RERANKER_GAMMA")
+    reranker_alpha: float = Field(default=0.85, alias="RERANKER_ALPHA")
+    reranker_beta: float = Field(default=0.15, alias="RERANKER_BETA")
+    reranker_gamma: float = Field(default=0.0, alias="RERANKER_GAMMA")
     reranker_s_base: float = Field(default=24.0, alias="RERANKER_S_BASE")
     reranker_tag_fallback: float = Field(default=0.5, alias="RERANKER_TAG_FALLBACK")
     reranker_score_threshold: float = Field(default=0.60, alias="RERANKER_SCORE_THRESHOLD")
 
     # Vector search
-    vector_score_threshold: float = Field(default=0.35, alias="VECTOR_SCORE_THRESHOLD")
+    vector_score_threshold: float = Field(default=0.2, alias="VECTOR_SCORE_THRESHOLD")
 
     # RRF
     rrf_k: int = Field(default=60, alias="RRF_K")

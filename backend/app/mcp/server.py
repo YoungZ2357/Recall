@@ -126,11 +126,7 @@ async def list_documents(ctx: Context) -> str:
                     "document_id": str(doc.document_id),
                     "title": doc.title,
                     "source_path": doc.source_path,
-                    "sync_status": (
-                        doc.sync_status.value
-                        if hasattr(doc.sync_status, "value")
-                        else doc.sync_status
-                    ),
+                    "sync_status": str(doc.sync_status),
                     "created_at": doc.created_at.isoformat(),
                 }
                 for doc in docs

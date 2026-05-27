@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(npm run *)",
+      "Bash(curl -sv -X POST http://localhost:8000/api/search -H \"Content-Type: application/json\" -d \"{\\\\\"query\\\\\": \\\\\"test\\\\\", \\\\\"top_k\\\\\": 2}\")",
+      "Bash(conda run *)",
+      "Bash(docker run *)",
+      "Bash(docker compose *)",
+      "PowerShell(Get-ChildItem -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\" -Recurse -Directory | Where-Object { $_.Name -eq \"pages\" -or $_.Name -eq \"api\" -or $_.Name -eq \"services\" } | Select-Object FullName)",
+      "Bash(cd frontend *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\\\\frontend\\\\src\\\\pages\\\\search\\\\\" -Recurse | Select-Object FullName)",
+      "Bash(grep -E \"\\\\.\\(md|txt\\)$\")",
+      "Bash(Get-ChildItem -Recurse -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\\\\frontend\\\\src\\\\pages\\\\search\")",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\\\\frontend\\\\src\" -Recurse -Include \"*.tsx\", \"*.ts\", \"*.jsx\", \"*.js\")",
+      "Bash(Select-Object -ExpandProperty FullName)"
+    ]
+  }
+}
