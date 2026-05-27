@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { label: 'Library', to: '/library' },
   { label: 'Ingest', to: '/ingest' },
   { label: 'Eval', to: '/eval' },
+  { label: 'Settings', to: '/settings' },
 ] as const;
 
 export function AppNav() {

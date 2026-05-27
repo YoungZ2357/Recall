@@ -18,7 +18,27 @@ const REHYPE_KATEX_OPTIONS = {
   errorColor: 'var(--text-muted)',
 };
 
+// Some LLMs emit LaTeX-native delimiters \(...\) / \[...\] even when prompted
+// to use $-delimiters. CommonMark's backslash-escape rule turns `\(` and `\[`
+// into literal `(` `[` before remark-math runs, so without this normalization
+// the math source falls through as plain text. Rewrite to $...$ / $$...$$
+// before ReactMarkdown sees the input.
+//
+// Non-greedy matching means unbalanced delimiters (e.g. mid-stream SSE chunk
+// with an opening `\(` but no closing `\)` yet) are left as-is and pass
+// through untouched — they'll be normalized on the next streaming update
+// once the closing delimiter arrives.
+const BLOCK_MATH_DELIM  = /\\\[([\s\S]+?)\\\]/g;
+const INLINE_MATH_DELIM = /\\\(([^\n]+?)\\\)/g;
+
+function normalizeMathDelimiters(input: string): string {
+  return input
+    .replace(BLOCK_MATH_DELIM,  (_m, inner) => '$$' + inner + '$$')
+    .replace(INLINE_MATH_DELIM, (_m, inner) => '$'  + inner + '$');
+}
+
 export function MarkdownRenderer({ children, components }: MarkdownRendererProps) {
+  const normalized = normalizeMathDelimiters(children);
   return (
     // Wrapper div is required: react-markdown v8 renders a fragment and cannot
     // accept a className prop directly.
@@ -28,7 +48,7 @@ export function MarkdownRenderer({ children, components }: MarkdownRendererProps
         rehypePlugins={[[rehypeKatex, REHYPE_KATEX_OPTIONS]]}
         components={components}
       >
-        {children}
+        {normalized}
       </ReactMarkdown>
     </div>
   );
