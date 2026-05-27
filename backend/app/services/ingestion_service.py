@@ -114,6 +114,7 @@ class IngestionService:
         strip_markdown: bool = False,
         stage_callback: Callable[[str], None] | None = None,
         on_chunk_count: Callable[[int], None] | None = None,
+        display_name: str | None = None,
     ) -> Document:
         """Ingest a single file end-to-end through the ingestion pipeline.
 
@@ -141,6 +142,7 @@ class IngestionService:
             file_path,
             stage_callback=stage_callback,
             on_chunk_count=on_chunk_count,
+            display_name=display_name,
         )
 
         self.last_filter_result = pipeline.last_filter_result

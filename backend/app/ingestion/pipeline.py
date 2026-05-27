@@ -100,6 +100,7 @@ class IngestionPipeline:
         file_path: Path,
         stage_callback: Callable[[str], None] | None = None,
         on_chunk_count: Callable[[int], None] | None = None,
+        display_name: str | None = None,
     ) -> Document:
         """Ingest a single file end-to-end: parse → chunk → embed → dual-write.
 
@@ -197,7 +198,8 @@ class IngestionPipeline:
                 if tags:
                     logger.debug("Auto-tagged with %d tags: %s", len(tags), tags)
 
-            title = parse_result.metadata.get("title") or file_path.name
+            # Priority: parser metadata title → caller-supplied display name → bare filename
+            title = parse_result.metadata.get("title") or display_name or file_path.name
             doc = await DocumentRepository.create(
                 session,
                 DocumentCreate(

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Switch } from 'antd';
+import { Switch, message } from 'antd';
+import { CopyOutlined } from '@ant-design/icons';
 import type { SearchResultItem } from '../api/types';
 import styles from './chunk-card.module.css';
 
@@ -7,6 +8,8 @@ interface ChunkCardProps {
   item: SearchResultItem;
   rank: number;
   weights?: { alpha: number; beta: number; gamma: number };
+  /** Set to false when results are grouped by document — the group header already shows the title */
+  showTitle?: boolean;
 }
 
 const DEFAULT_CARD_WEIGHTS = { alpha: 0.85, beta: 0.15, gamma: 0.0 };
@@ -33,9 +36,16 @@ function docTitle(filename: string): string {
   return filename.replace(/\.[^.]+$/, '');
 }
 
-export function ChunkCard({ item, rank, weights }: ChunkCardProps) {
+export function ChunkCard({ item, rank, weights, showTitle = true }: ChunkCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showAbsolute, setShowAbsolute] = useState(false);
+
+  function handleCopyDocId(e: React.MouseEvent) {
+    e.stopPropagation();
+    navigator.clipboard.writeText(item.doc_id).then(() => {
+      void message.success('已复制文章 ID');
+    });
+  }
 
   const scores = item.score_detail;
   const total = item.final_score;
@@ -59,8 +69,19 @@ export function ChunkCard({ item, rank, weights }: ChunkCardProps) {
     <div className={styles.card}>
       {/* header */}
       <div className={styles.header}>
-        <span className={styles.title}>{docTitle(item.filename)}</span>
+        {/* Title — set showTitle=false when results are grouped by document */}
+        {showTitle && (
+          <span className={styles.title}>{docTitle(item.filename)}</span>
+        )}
         <span className={styles.num}>#{rank}</span>
+      </div>
+
+      {/* doc_id row: always shown; small muted text + inline copy button */}
+      <div className={styles.docMeta}>
+        <span className={styles.docId}>{item.doc_id}</span>
+        <button className={styles.copyBtn} onClick={handleCopyDocId} title="复制文章 ID">
+          <CopyOutlined />
+        </button>
       </div>
 
       {/* tags */}

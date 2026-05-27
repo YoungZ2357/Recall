@@ -30,6 +30,7 @@ async def execute_ingest_task(
     embedder: BaseEmbedder,
     generator: LLMGenerator | None,
     mineru_api_key: str | None = None,
+    display_names: dict[str, str] | None = None,
 ) -> None:
     """Run ingestion for all files in the task. Single-file failures are isolated."""
     task_store.start_task(task_id)
@@ -39,6 +40,7 @@ async def execute_ingest_task(
             task_id=task_id,
             file_id=file_id,
             file_path=file_path,
+            display_name=display_names.get(file_id) if display_names else None,
             req=req,
             task_store=task_store,
             session_factory=session_factory,
@@ -62,6 +64,7 @@ async def _ingest_single_file(
     embedder: BaseEmbedder,
     generator: LLMGenerator | None,
     mineru_api_key: str | None = None,
+    display_name: str | None = None,
 ) -> None:
     # Pre-mark stages that will be skipped
     if not req.strip_tail and not req.strip_markdown:
@@ -116,6 +119,7 @@ async def _ingest_single_file(
             strip_markdown=req.strip_markdown,
             stage_callback=stage_cb,
             on_chunk_count=chunk_count_cb,
+            display_name=display_name,
         )
 
         # Mark the final stage done

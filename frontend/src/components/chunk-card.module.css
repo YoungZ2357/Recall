@@ -29,6 +29,44 @@
   margin-left: 8px;
 }
 
+/* doc_id row — always rendered below the title */
+.docMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.docId {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  letter-spacing: 0.02em;
+  /* prevent UUID from wrapping mid-segment on narrow cards */
+  word-break: break-all;
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.copyBtn:hover {
+  opacity: 1;
+  color: var(--color-primary, #1677ff);
+}
+
 .tagRow {
   display: flex;
   flex-wrap: wrap;

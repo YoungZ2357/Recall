@@ -13,7 +13,6 @@ from fastapi.responses import JSONResponse
 
 from app.api.dependencies import TaskStoreDep
 from app.config import settings
-from app.core.exceptions import RecallError
 from app.core.schemas import (
     FileTaskProgressResponse,
     IngestRequest,
@@ -153,6 +152,9 @@ async def start_ingest(
     task_id = str(uuid4())
     task_store.create_task(task_id, file_infos)
 
+    # Map file_id → original filename (already stripped of the uuid4_ prefix above)
+    display_names = {info["file_id"]: info["filename"] for info in file_infos}
+
     from app.services.ingest_task_runner import execute_ingest_task
 
     asyncio.create_task(
@@ -160,6 +162,7 @@ async def start_ingest(
             task_id=task_id,
             req=req,
             file_upload_map=file_upload_map,
+            display_names=display_names,
             task_store=task_store,
             session_factory=request.app.state.session_factory,
             qdrant=request.app.state.qdrant,
