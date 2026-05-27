@@ -52,8 +52,8 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.7, alias="LLM_TEMPERATURE")
 
     # Reranker
-    reranker_alpha: float = Field(default=0.70, alias="RERANKER_ALPHA")
-    reranker_beta: float = Field(default=0.30, alias="RERANKER_BETA")
+    reranker_alpha: float = Field(default=0.85, alias="RERANKER_ALPHA")
+    reranker_beta: float = Field(default=0.15, alias="RERANKER_BETA")
     reranker_gamma: float = Field(default=0.0, alias="RERANKER_GAMMA")
     reranker_s_base: float = Field(default=24.0, alias="RERANKER_S_BASE")
     reranker_tag_fallback: float = Field(default=0.5, alias="RERANKER_TAG_FALLBACK")

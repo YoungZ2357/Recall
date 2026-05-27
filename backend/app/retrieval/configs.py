@@ -28,8 +28,8 @@ class ContextualBM25SearcherConfig(BaseModel, frozen=True):
 
 
 class RerankerConfig(BaseModel, frozen=True):
-    alpha: float = 0.70
-    beta: float = 0.30
+    alpha: float = 0.85
+    beta: float = 0.15
     gamma: float = 0.0
     score_threshold: float = 0.60
     retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent"

@@ -18,8 +18,35 @@ export interface SearchResultItem {
   tags: string[];
 }
 
+// Mirrors backend TopologySpecJSON / NodeSpecJSON / EdgeJSON
+// (backend/app/retrieval/topology.py). Field names must match exactly —
+// the backend Pydantic models reject extra/renamed keys.
+export interface EdgeJSON {
+  from_node: string;
+  to_node: string;
+}
+
+export interface NodeSpecJSON {
+  node_id: string;
+  node_type: string;
+  config: Record<string, unknown>;
+}
+
+export interface TopologySpecJSON {
+  name?: string;
+  nodes: NodeSpecJSON[];
+  edges: EdgeJSON[];
+}
+
 export interface SearchRequest {
   query: string;
   top_k?: number;
   mode?: RetentionMode;
+  topology?: TopologySpecJSON;
+}
+
+export interface SourceInfo {
+  doc_id: string;
+  filename: string;
+  chunk_id: string;
 }

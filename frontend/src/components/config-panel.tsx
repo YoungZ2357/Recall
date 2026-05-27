@@ -16,23 +16,23 @@ export const DEFAULT_CONFIG: SearchConfig = {
   customJson: '',
   rewrite: 'passthrough',
   topK: 10,
-  alpha: 0.6,
-  beta: 0.2,
-  gamma: 0.2,
+  alpha: 0.85,
+  beta: 0.15,
+  gamma: 0.0,
   retention: 'prefer_recent',
 };
 
 const CUSTOM_JSON_PLACEHOLDER = `{
   "nodes": [
-    {"id": "query_in", "type": "input"},
-    {"id": "vector_search", "type": "searcher"},
-    {"id": "rrf_merge", "type": "fusion"},
-    {"id": "reranker", "type": "reranker"}
+    {"node_id": "vec",    "node_type": "VectorSearcher", "config": {}},
+    {"node_id": "bm25",   "node_type": "BM25Searcher",   "config": {}},
+    {"node_id": "merge",  "node_type": "RRFMerger",      "config": {}},
+    {"node_id": "rerank", "node_type": "Reranker",       "config": {}}
   ],
   "edges": [
-    ["query_in", "vector_search"],
-    ["vector_search", "rrf_merge"],
-    ["rrf_merge", "reranker"]
+    {"from_node": "vec",    "to_node": "merge"},
+    {"from_node": "bm25",   "to_node": "merge"},
+    {"from_node": "merge",  "to_node": "rerank"}
   ]
 }`;
 
@@ -64,13 +64,32 @@ const WEIGHT_SIGNALS = [
 
 function validateJson(json: string): string {
   if (!json.trim()) return '';
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(json) as Record<string, unknown>;
-    if (!parsed.nodes || !parsed.edges) return 'Missing required fields: nodes, edges';
-    return '';
+    parsed = JSON.parse(json);
   } catch {
     return 'Invalid JSON';
   }
+  if (!parsed || typeof parsed !== 'object') return 'Root must be an object';
+
+  const root = parsed as Record<string, unknown>;
+  if (!Array.isArray(root.nodes)) return 'Missing or invalid field: nodes (array)';
+  if (!Array.isArray(root.edges)) return 'Missing or invalid field: edges (array)';
+
+  for (let i = 0; i < root.nodes.length; i++) {
+    const n = root.nodes[i] as Record<string, unknown> | null;
+    if (!n || typeof n !== 'object') return `nodes[${i}] must be an object`;
+    if (typeof n.node_id !== 'string')   return `nodes[${i}].node_id must be a string`;
+    if (typeof n.node_type !== 'string') return `nodes[${i}].node_type must be a string`;
+    if (!n.config || typeof n.config !== 'object') return `nodes[${i}].config must be an object`;
+  }
+  for (let i = 0; i < root.edges.length; i++) {
+    const e = root.edges[i] as Record<string, unknown> | null;
+    if (!e || typeof e !== 'object') return `edges[${i}] must be an object`;
+    if (typeof e.from_node !== 'string') return `edges[${i}].from_node must be a string`;
+    if (typeof e.to_node !== 'string')   return `edges[${i}].to_node must be a string`;
+  }
+  return '';
 }
 
 export function ConfigPanel({ open, onClose, config, onChange }: ConfigPanelProps) {

@@ -7,7 +7,8 @@ import { ConfigPanel, DEFAULT_CONFIG } from '../../components/config-panel';
 import { GeneratedAnswer } from '../../components/generated-answer';
 import { fetchSearch } from '../../api/search';
 import { streamGenerate } from '../../api/generate';
-import type { SearchResultItem } from '../../api/types';
+import { buildTopology } from '../../api/topology-builder';
+import type { SearchResultItem, TopologySpecJSON } from '../../api/types';
 import type { SearchConfig } from '../../components/config-panel';
 import styles from './search-page.module.css';
 
@@ -73,12 +74,14 @@ export function SearchPage() {
     setConfig(prev => ({ ...prev, ...patch }));
   }
 
-  async function runStreamGenerate(query: string) {
+  async function runStreamGenerate(query: string, topology: TopologySpecJSON) {
     setStreaming(true);
     try {
-      for await (const chunk of streamGenerate({ query, top_k: config.topK, mode: config.retention })) {
-        if (chunk.startsWith('{')) break; // sources frame — skip
-        setGenerated(prev => prev + chunk);
+      for await (const frame of streamGenerate({ query, top_k: config.topK, mode: config.retention, topology })) {
+        if (frame.kind === 'token') {
+          setGenerated(prev => prev + frame.content);
+        }
+        // 'sources' and 'unknown' frames are intentionally ignored for now.
       }
     } finally {
       setStreaming(false);
@@ -86,17 +89,25 @@ export function SearchPage() {
   }
 
   async function handleSubmit(query: string) {
+    let topology: TopologySpecJSON;
+    try {
+      topology = buildTopology(config);
+    } catch (e) {
+      void message.error(e instanceof Error ? e.message : 'Invalid topology config');
+      return;
+    }
+
     setLoading(true);
     setGenerated('');
     const t0 = Date.now();
 
     try {
       const searchPromise = showChunks
-        ? fetchSearch({ query, top_k: config.topK, mode: config.retention })
+        ? fetchSearch({ query, top_k: config.topK, mode: config.retention, topology })
         : Promise.resolve([] as SearchResultItem[]);
 
       const generatePromise = showGenerate
-        ? runStreamGenerate(query)
+        ? runStreamGenerate(query, topology)
         : Promise.resolve();
 
       const [data] = await Promise.all([searchPromise, generatePromise]);

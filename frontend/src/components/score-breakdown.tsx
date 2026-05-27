@@ -7,7 +7,7 @@ interface Props {
   weights?: { alpha: number; beta: number; gamma: number };
 }
 
-const DEFAULT_WEIGHTS = { alpha: 0.6, beta: 0.2, gamma: 0.2 };
+const DEFAULT_WEIGHTS = { alpha: 0.85, beta: 0.15, gamma: 0.0 };
 
 const SIGNALS = [
   { key: 'retrieval_score' as const, label: 'retrieval', cssVar: 'var(--signal-retrieval)' },

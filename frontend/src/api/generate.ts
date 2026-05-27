@@ -1,12 +1,39 @@
+import type { SourceInfo, TopologySpecJSON } from './types';
+
 interface GenerateApiRequest {
   query: string;
   top_k?: number;
   mode?: string;
+  topology?: TopologySpecJSON;
 }
 
-// Yields SSE payload strings (text tokens or final sources JSON).
-// Caller should check if a yielded value starts with '{' to detect the sources frame.
-export async function* streamGenerate(req: GenerateApiRequest): AsyncGenerator<string> {
+// Discriminated union of SSE frames emitted by POST /generate (stream=true).
+// New frame types should add a new variant here; callers switch on `kind`.
+export type GenerateFrame =
+  | { kind: 'token'; content: string }
+  | { kind: 'sources'; sources: SourceInfo[] }
+  | { kind: 'unknown'; raw: unknown };
+
+function parseFrame(payload: string): GenerateFrame | null {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(payload);
+  } catch {
+    return null;
+  }
+  if (obj && typeof obj === 'object') {
+    const o = obj as Record<string, unknown>;
+    if (typeof o.content === 'string') {
+      return { kind: 'token', content: o.content };
+    }
+    if (Array.isArray(o.sources)) {
+      return { kind: 'sources', sources: o.sources as SourceInfo[] };
+    }
+  }
+  return { kind: 'unknown', raw: obj };
+}
+
+export async function* streamGenerate(req: GenerateApiRequest): AsyncGenerator<GenerateFrame> {
   const res = await fetch('/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -31,7 +58,8 @@ export async function* streamGenerate(req: GenerateApiRequest): AsyncGenerator<s
       if (!line.startsWith('data: ')) continue;
       const payload = line.slice(6);
       if (payload === '[DONE]') return;
-      yield payload;
+      const frame = parseFrame(payload);
+      if (frame) yield frame;
     }
   }
 }
