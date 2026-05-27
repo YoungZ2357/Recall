@@ -27,17 +27,26 @@ export function ResultStep({ onNewIngest }: ResultStepProps) {
 
   // Kick off ingestion the first time we land on this step.
   // Store-level guards prevent duplicate launches under StrictMode or resume.
+  // Skip when startError is set — auto-relaunching would silently retry a
+  // failure the user hasn't acknowledged.
   useEffect(() => {
-    if (!activeTaskId && !task && !starting) {
+    if (!activeTaskId && !task && !starting && !startError) {
       void startTask();
     }
-  }, [activeTaskId, task, starting, startTask]);
+  }, [activeTaskId, task, starting, startError, startTask]);
 
   if (startError) {
     return (
-      <div className={styles.loading}>
-        启动失败：{startError}
-      </div>
+      <>
+        <div className={styles.loading}>启动失败：{startError}</div>
+        <div className={styles.actions}>
+          <div className={styles.actionRight}>
+            <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={onNewIngest}>
+              ← 返回上传
+            </button>
+          </div>
+        </div>
+      </>
     );
   }
 

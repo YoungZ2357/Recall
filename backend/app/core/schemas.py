@@ -191,6 +191,11 @@ class TempUploadResponse(BaseModel):
 class IngestRequest(BaseModel):
     """POST /api/ingest request body."""
     file_ids: list[str]
+    # Client-supplied task UUID. When present, the backend uses it as-is so the
+    # client can persist the task_id before the request flies (eliminates the
+    # race window where the backend creates a task but the client never learns
+    # its id). Omit to let the backend generate one (CLI / legacy callers).
+    task_id: str | None = None
     pdf_parser: Literal["pymupdf", "marker", "mineru"] = "pymupdf"
     strip_tail: bool = True
     strip_markdown: bool = False

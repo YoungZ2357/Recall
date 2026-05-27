@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import logging
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -149,7 +149,27 @@ async def start_ingest(
         filename = parts[1] if len(parts) > 1 else temp_path.name
         file_infos.append({"file_id": fid, "filename": filename})
 
-    task_id = str(uuid4())
+    if req.task_id is not None:
+        try:
+            task_id = str(UUID(req.task_id))
+        except ValueError:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": "InvalidTaskIdError",
+                    "message": f"task_id is not a valid UUID: {req.task_id}",
+                },
+            )
+        if task_store.get_task(task_id) is not None:
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": "TaskAlreadyExistsError",
+                    "message": f"Task already exists: {task_id}",
+                },
+            )
+    else:
+        task_id = str(uuid4())
     task_store.create_task(task_id, file_infos)
 
     # Map file_id → original filename (already stripped of the uuid4_ prefix above)

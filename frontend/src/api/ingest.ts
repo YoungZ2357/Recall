@@ -1,9 +1,18 @@
 import type { IngestConfig, IngestTask, FileTaskStatus, StageProgress, UploadFile } from '../types/ingest';
 
+export class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = 'HttpError';
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Request failed ${res.status}: ${text}`);
+    throw new HttpError(res.status, `Request failed ${res.status}: ${text}`);
   }
   return res.json() as Promise<T>;
 }
@@ -52,6 +61,7 @@ interface TaskStatusResponse {
 export async function startIngestion(
   files: UploadFile[],
   config: IngestConfig,
+  taskId: string,
 ): Promise<string> {
   // Step 1: upload files to temp storage
   const form = new FormData();
@@ -62,8 +72,11 @@ export async function startIngestion(
   const uploaded = await handleResponse<TempUploadResponse>(uploadRes);
   const fileIds = uploaded.files.map(f => f.file_id);
 
-  // Step 2: start ingest task
+  // Step 2: start ingest task — task_id is supplied by the client so it can be
+  // persisted before this call flies. The backend echoes it back; we still read
+  // from the response in case a future revision diverges.
   const body = {
+    task_id: taskId,
     file_ids: fileIds,
     pdf_parser: config.pdfParser,
     strip_tail: config.stripTail,
