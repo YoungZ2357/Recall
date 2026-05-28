@@ -6,19 +6,30 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
-from app.cli._init_deps import init_deps, teardown_deps
+from app.cli._init_deps import AppResources, init_deps, teardown_deps
+
+if TYPE_CHECKING:
+    from app.evaluation.schemas import EvalReport, TestSetEntry
+    from app.services import EvaluationService
 
 logger = logging.getLogger(__name__)
 console = Console()
 
+# Mirror the directories defined in app/main.py so CLI and API see the same artifacts.
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
+_EVAL_TEST_SET_DIR = _BACKEND_ROOT / "data" / "eval_sets"
+_EVAL_REPORT_DIR = _BACKEND_ROOT / "data" / "eval_reports"
+
 eval_app = typer.Typer(help="Evaluate retrieval quality.")
+test_sets_app = typer.Typer(help="Manage evaluation test sets on disk.")
+reports_app = typer.Typer(help="Manage evaluation reports on disk.")
 
 
 @eval_app.command("generate-set")
@@ -266,49 +277,7 @@ async def _run_eval(
                 query_callback=on_query,
             )
 
-        # Aggregate summary
-        summary = Table(title="Evaluation Summary")
-        summary.add_column("Metric", style="cyan")
-        summary.add_column("Value", justify="right")
-        summary.add_row("Queries", str(report.num_queries))
-        summary.add_row("Top-K", str(report.top_k))
-        for metric_name, value in report.aggregate_metrics.items():
-            summary.add_row(metric_name, f"{value:.4f}")
-        console.print(summary)
-
-        # Per-query detail
-        metric_columns = list(report.aggregate_metrics.keys())
-        detail = Table(title="Per-Query Results")
-        detail.add_column("#", style="dim", width=4)
-        detail.add_column("Query", max_width=50)
-        for m in metric_columns:
-            detail.add_column(m, justify="right")
-        detail.add_column("Rel↑2 Hits", justify="right", width=10)
-
-        for i, r in enumerate(report.per_query, start=1):
-            # Count rel>=2 hits in retrieved top-k via test_set lookup
-            entry_lookup = next(
-                (e for e in test_set if e.query_id == r.query_id), None,
-            )
-            if entry_lookup is None:
-                hits_str = "—"
-                rel_count = 0
-            else:
-                rel_set = {
-                    cid for cid, g in entry_lookup.relevance.items() if g >= 2
-                }
-                hits = sum(1 for cid in r.retrieved_chunk_ids[:top_k] if cid in rel_set)
-                rel_count = len(rel_set)
-                hits_str = f"{hits}/{rel_count}"
-
-            query_preview = r.query[:45] + "..." if len(r.query) > 45 else r.query
-            row = [str(i), query_preview]
-            for m in metric_columns:
-                row.append(f"{r.metrics.get(m, 0.0):.3f}")
-            row.append(hits_str)
-            detail.add_row(*row)
-
-        console.print(detail)
+        _render_report(report, top_k=top_k, test_set=test_set)
 
         # Optional JSON report
         if output_path:
@@ -323,3 +292,362 @@ async def _run_eval(
 
     finally:
         await teardown_deps(resources)
+
+
+# --------------------------------------------------------------------------
+# Shared rendering / service-construction helpers
+# --------------------------------------------------------------------------
+
+
+def _render_report(
+    report: EvalReport,
+    top_k: int,
+    test_set: list[TestSetEntry] | None = None,
+) -> None:
+    """Render an EvalReport: aggregate summary table + per-query detail table.
+
+    When `test_set` is provided, the per-query table includes a "Rel>=2 Hits"
+    column counting how many rel>=2 chunks were retrieved within top-k. When
+    omitted (e.g. `eval reports show`), that column is skipped.
+    """
+    summary = Table(title="Evaluation Summary")
+    summary.add_column("Metric", style="cyan")
+    summary.add_column("Value", justify="right")
+    summary.add_row("Queries", str(report.num_queries))
+    summary.add_row("Top-K", str(report.top_k))
+    for metric_name, value in report.aggregate_metrics.items():
+        summary.add_row(metric_name, f"{value:.4f}")
+    console.print(summary)
+
+    metric_columns = list(report.aggregate_metrics.keys())
+    detail = Table(title="Per-Query Results")
+    detail.add_column("#", style="dim", width=4)
+    detail.add_column("Query", max_width=50)
+    for m in metric_columns:
+        detail.add_column(m, justify="right")
+
+    entry_by_id: dict[str, TestSetEntry] | None = None
+    if test_set is not None:
+        detail.add_column("Rel>=2 Hits", justify="right", width=10)
+        entry_by_id = {e.query_id: e for e in test_set}
+
+    for i, r in enumerate(report.per_query, start=1):
+        query_preview = r.query[:45] + "..." if len(r.query) > 45 else r.query
+        row = [str(i), query_preview]
+        for m in metric_columns:
+            row.append(f"{r.metrics.get(m, 0.0):.3f}")
+
+        if entry_by_id is not None:
+            entry_lookup = entry_by_id.get(r.query_id)
+            if entry_lookup is None:
+                hits_str = "—"
+            else:
+                rel_set = {
+                    cid for cid, g in entry_lookup.relevance.items() if g >= 2
+                }
+                hits = sum(1 for cid in r.retrieved_chunk_ids[:top_k] if cid in rel_set)
+                hits_str = f"{hits}/{len(rel_set)}"
+            row.append(hits_str)
+
+        detail.add_row(*row)
+
+    console.print(detail)
+
+
+def _build_eval_service(resources: AppResources) -> EvaluationService:
+    """Build an EvaluationService bound to the same directories as the API."""
+    # Import locally to avoid pulling FastAPI/services chain at module import time.
+    from app.services import EvaluationService
+
+    return EvaluationService(
+        embedder=resources.embedder,
+        qdrant_client=resources.qdrant_client,
+        session_factory=resources.session_factory,
+        generator=resources.generator,
+        search_service=resources.search_service,
+        test_set_dir=_EVAL_TEST_SET_DIR,
+        report_dir=_EVAL_REPORT_DIR,
+    )
+
+
+def _format_size(num_bytes: int) -> str:
+    """Format file size with a sensible unit (B / KB / MB)."""
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    return f"{num_bytes / (1024 * 1024):.2f} MB"
+
+
+def _confirm_or_exit(prompt_text: str, *, skip: bool) -> None:
+    """Prompt for 'y' confirmation; exit 0 on anything else. No-op when skip=True."""
+    if skip:
+        return
+    console.print(prompt_text)
+    confirm = typer.prompt("Type 'y' to confirm", default="n")
+    if confirm.lower() != "y":
+        console.print("Aborted.")
+        raise typer.Exit(code=0)
+
+
+# --------------------------------------------------------------------------
+# test-sets sub-app
+# --------------------------------------------------------------------------
+
+
+@test_sets_app.command("list")
+def test_sets_list() -> None:
+    """List all test sets stored under backend/data/eval_sets/."""
+    asyncio.run(_run_test_sets_list())
+
+
+async def _run_test_sets_list() -> None:
+    resources = await init_deps()
+    try:
+        svc = _build_eval_service(resources)
+        summaries = svc.list_test_sets()
+        if not summaries:
+            console.print("[dim]No test sets found.[/dim]")
+            return
+
+        table = Table(title=f"Test Sets ({len(summaries)} total)")
+        table.add_column("Name", style="cyan")
+        table.add_column("Entries", justify="right", width=8)
+        table.add_column("Size", justify="right", width=10)
+        table.add_column("Created At", width=19)
+        for s in summaries:
+            table.add_row(
+                s.name,
+                str(s.entry_count),
+                _format_size(s.size_bytes),
+                s.created_at[:19].replace("T", " "),
+            )
+        console.print(table)
+    finally:
+        await teardown_deps(resources)
+
+
+@test_sets_app.command("show")
+def test_sets_show(
+    name: Annotated[str, typer.Argument(help="Test set name (filename stem).")],
+    preview: Annotated[
+        int, typer.Option("--preview", "-p", min=0, max=100, help="Number of entries to preview.")
+    ] = 5,
+) -> None:
+    """Show a test set's metadata and a preview of its entries."""
+    asyncio.run(_run_test_sets_show(name, preview))
+
+
+async def _run_test_sets_show(name: str, preview: int) -> None:
+    from app.core.exceptions import InvalidTestSetNameError, TestSetNotFoundError
+
+    resources = await init_deps()
+    try:
+        svc = _build_eval_service(resources)
+        try:
+            summary = svc.load_test_set_summary(name)
+            entries = svc.load_test_set(name, preview=preview)
+        except (TestSetNotFoundError, InvalidTestSetNameError) as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            raise typer.Exit(code=1) from e
+
+        meta = Table(title=f"Test Set: {summary.name}")
+        meta.add_column("Field", style="cyan")
+        meta.add_column("Value")
+        meta.add_row("Entries", str(summary.entry_count))
+        meta.add_row("Size", _format_size(summary.size_bytes))
+        meta.add_row("Created At", summary.created_at[:19].replace("T", " "))
+        console.print(meta)
+
+        if not entries:
+            return
+
+        detail = Table(title=f"First {len(entries)} entries")
+        detail.add_column("#", style="dim", width=4)
+        detail.add_column("Query", max_width=60)
+        detail.add_column("Type", width=12)
+        detail.add_column("Source Chunk", style="dim", max_width=36)
+        detail.add_column("Rel>=2", justify="right", width=8)
+        for i, entry in enumerate(entries, start=1):
+            rel_count = sum(1 for g in entry.relevance.values() if g >= 2)
+            query_preview = entry.query if len(entry.query) <= 55 else entry.query[:55] + "..."
+            detail.add_row(
+                str(i),
+                query_preview,
+                entry.metadata.query_type,
+                entry.source_chunk_id,
+                str(rel_count),
+            )
+        console.print(detail)
+    finally:
+        await teardown_deps(resources)
+
+
+@test_sets_app.command("delete")
+def test_sets_delete(
+    name: Annotated[str, typer.Argument(help="Test set name (filename stem).")],
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip confirmation prompt.")
+    ] = False,
+) -> None:
+    """Delete a test set (and its split manifest if present)."""
+    asyncio.run(_run_test_sets_delete(name, yes))
+
+
+async def _run_test_sets_delete(name: str, yes: bool) -> None:
+    from app.core.exceptions import InvalidTestSetNameError, TestSetNotFoundError
+
+    resources = await init_deps()
+    try:
+        svc = _build_eval_service(resources)
+        try:
+            summary = svc.load_test_set_summary(name)
+        except (TestSetNotFoundError, InvalidTestSetNameError) as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            raise typer.Exit(code=1) from e
+
+        _confirm_or_exit(
+            f"Delete test set [cyan]{summary.name}[/cyan] "
+            f"({summary.entry_count} entries, {_format_size(summary.size_bytes)})? "
+            "This cannot be undone.",
+            skip=yes,
+        )
+
+        try:
+            svc.delete_test_set(name)
+        except TestSetNotFoundError as e:
+            # Race condition: file disappeared between load_summary and delete.
+            console.print(f"[red]Error:[/red] {e.message}")
+            raise typer.Exit(code=1) from e
+
+        console.print(f"[green]Deleted:[/green] {summary.name}")
+    finally:
+        await teardown_deps(resources)
+
+
+# --------------------------------------------------------------------------
+# reports sub-app
+# --------------------------------------------------------------------------
+
+
+@reports_app.command("list")
+def reports_list() -> None:
+    """List all evaluation reports stored under backend/data/eval_reports/."""
+    asyncio.run(_run_reports_list())
+
+
+async def _run_reports_list() -> None:
+    resources = await init_deps()
+    try:
+        svc = _build_eval_service(resources)
+        summaries = svc.list_reports()
+        if not summaries:
+            console.print("[dim]No reports found.[/dim]")
+            return
+
+        # Collect the union of metric names so columns are stable across reports.
+        all_metrics: list[str] = []
+        seen: set[str] = set()
+        for s in summaries:
+            for m in s.aggregate_metrics:
+                if m not in seen:
+                    all_metrics.append(m)
+                    seen.add(m)
+
+        table = Table(title=f"Reports ({len(summaries)} total)")
+        table.add_column("Name", style="cyan")
+        table.add_column("Queries", justify="right", width=8)
+        table.add_column("Top-K", justify="right", width=6)
+        table.add_column("Created At", width=19)
+        for m in all_metrics:
+            table.add_column(m, justify="right")
+
+        for s in summaries:
+            row = [
+                s.name,
+                str(s.num_queries),
+                str(s.top_k),
+                s.created_at[:19].replace("T", " "),
+            ]
+            for m in all_metrics:
+                v = s.aggregate_metrics.get(m)
+                row.append(f"{v:.4f}" if v is not None else "—")
+            table.add_row(*row)
+        console.print(table)
+    finally:
+        await teardown_deps(resources)
+
+
+@reports_app.command("show")
+def reports_show(
+    name: Annotated[str, typer.Argument(help="Report name (filename stem).")],
+) -> None:
+    """Show an evaluation report's aggregate metrics and per-query details."""
+    asyncio.run(_run_reports_show(name))
+
+
+async def _run_reports_show(name: str) -> None:
+    from app.core.exceptions import InvalidTestSetNameError, ReportNotFoundError
+
+    resources = await init_deps()
+    try:
+        svc = _build_eval_service(resources)
+        try:
+            report = svc.load_report(name)
+        except (ReportNotFoundError, InvalidTestSetNameError) as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            raise typer.Exit(code=1) from e
+
+        console.print(f"Report: [cyan]{name}[/cyan]")
+        _render_report(report, top_k=report.top_k, test_set=None)
+    finally:
+        await teardown_deps(resources)
+
+
+@reports_app.command("delete")
+def reports_delete(
+    name: Annotated[str, typer.Argument(help="Report name (filename stem).")],
+    yes: Annotated[
+        bool, typer.Option("--yes", "-y", help="Skip confirmation prompt.")
+    ] = False,
+) -> None:
+    """Delete an evaluation report."""
+    asyncio.run(_run_reports_delete(name, yes))
+
+
+async def _run_reports_delete(name: str, yes: bool) -> None:
+    from app.core.exceptions import InvalidTestSetNameError, ReportNotFoundError
+
+    resources = await init_deps()
+    try:
+        svc = _build_eval_service(resources)
+        try:
+            report = svc.load_report(name)
+        except (ReportNotFoundError, InvalidTestSetNameError) as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            raise typer.Exit(code=1) from e
+
+        _confirm_or_exit(
+            f"Delete report [cyan]{name}[/cyan] "
+            f"({report.num_queries} queries, top-{report.top_k})? "
+            "This cannot be undone.",
+            skip=yes,
+        )
+
+        try:
+            svc.delete_report(name)
+        except ReportNotFoundError as e:
+            console.print(f"[red]Error:[/red] {e.message}")
+            raise typer.Exit(code=1) from e
+
+        console.print(f"[green]Deleted:[/green] {name}")
+    finally:
+        await teardown_deps(resources)
+
+
+# --------------------------------------------------------------------------
+# Sub-app registration
+# --------------------------------------------------------------------------
+
+eval_app.add_typer(test_sets_app, name="test-sets")
+eval_app.add_typer(reports_app, name="reports")
