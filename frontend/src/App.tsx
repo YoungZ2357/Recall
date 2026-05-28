@@ -5,17 +5,8 @@ import { SearchPage } from './pages/search/search-page';
 import { LibraryPage } from './pages/library/library-page';
 import { IngestPage } from './pages/ingest/ingest-page';
 import { SettingsPage } from './pages/settings/settings-page';
+import { EvalPage } from './pages/eval/eval-page';
 import { useIngestStore } from './stores/ingest-store';
-
-const COMING_SOON_ROUTES = ['/eval'];
-
-function ComingSoon({ name }: { name: string }) {
-  return (
-    <div style={{ padding: 40, color: 'var(--text-secondary)', fontSize: 14 }}>
-      {name} — coming soon
-    </div>
-  );
-}
 
 function App() {
   useEffect(() => {
@@ -39,14 +30,8 @@ function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/ingest" element={<IngestPage />} />
+          <Route path="/eval" element={<EvalPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          {COMING_SOON_ROUTES.map(path => (
-            <Route
-              key={path}
-              path={path}
-              element={<ComingSoon name={path.slice(1)} />}
-            />
-          ))}
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

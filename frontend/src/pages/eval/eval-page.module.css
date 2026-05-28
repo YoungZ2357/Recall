@@ -1,0 +1,478 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--page-bg);
+}
+
+.contentArea {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 24px 24px;
+}
+
+/* ─── Top bar: Generate section toggle ─── */
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border-default);
+}
+
+.topBarLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topBarArrow {
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: inline-block;
+  transition: transform 0.2s;
+}
+
+.topBarArrowOpen {
+  transform: rotate(90deg);
+}
+
+.sectionLabel {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+}
+
+.topBarHint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* ─── Two-column grid ─── */
+.grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+  padding-top: 16px;
+}
+
+.leftCol {
+  border-right: 0.5px solid var(--border-default);
+  padding-right: 16px;
+}
+
+.rightCol {
+  min-width: 0;
+}
+
+/* ─── Section block ─── */
+.section {
+  margin-bottom: 18px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sectionActions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ─── Dataset list items ─── */
+.datasetList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.datasetItem {
+  padding: 8px 10px;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  position: relative;
+}
+
+.datasetItem:hover {
+  background: var(--bg-tertiary);
+}
+
+.datasetItemActive {
+  background: var(--accent-surface);
+  border-left: 2px solid var(--accent);
+}
+
+.datasetName {
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.datasetActive .datasetName,
+.datasetItemActive .datasetName {
+  font-weight: 500;
+  color: var(--accent-text);
+}
+
+.datasetMeta {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.datasetItemActive .datasetMeta {
+  color: var(--accent-text);
+  opacity: 0.75;
+}
+
+.datasetEmpty {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 12px 4px;
+  text-align: center;
+}
+
+/* ─── Field labels ─── */
+.label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+/* ─── Chip group ─── */
+.chipGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chipGroupRow {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  font-size: 11px;
+  padding: 4px 9px;
+  border: 0.5px solid var(--border-default);
+  color: var(--text-secondary);
+  border-radius: var(--border-radius-md);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.3;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.chip:hover {
+  border-color: var(--border-emphasis);
+}
+
+.chipActive {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-surface);
+}
+
+.chipCheck {
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* ─── Inline row (label + input) ─── */
+.inlineRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.numInput {
+  padding: 5px 8px;
+  border: 0.5px solid var(--border-default);
+  border-radius: var(--border-radius-md);
+  font-size: 12px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  box-sizing: border-box;
+  width: 56px;
+}
+
+/* ─── Weights sliders ─── */
+.weightRow {
+  margin-bottom: 10px;
+}
+
+.weightHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.weightLabel {
+  font-weight: 500;
+}
+
+.weightAlpha { color: var(--signal-retrieval); }
+.weightBeta { color: var(--signal-metadata); }
+.weightGamma { color: var(--signal-retention); }
+
+.weightValue {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.weightSlider {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--border-default);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.weightSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.weightSlider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+}
+
+/* ─── Run button ─── */
+.runBtn {
+  width: 100%;
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 0.5px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.runBtn:disabled {
+  background: var(--border-default);
+  border-color: var(--border-default);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}
+
+.runBtn:not(:disabled):hover {
+  background: var(--accent-text);
+  border-color: var(--accent-text);
+}
+
+/* ─── Secondary button ─── */
+.btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 0.5px solid var(--border-emphasis);
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ─── Results panel ─── */
+.resultsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+
+.resultsTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.resultsHint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.metricCards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.metricCard {
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border-default);
+  border-radius: var(--border-radius-md);
+  padding: 10px 12px;
+}
+
+.metricLabel {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.metricValue {
+  font-size: 18px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  margin-top: 2px;
+}
+
+.metricDelta {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.deltaPositive { color: #16a34a; }
+.deltaNegative { color: var(--danger); }
+.deltaNeutral { color: var(--text-tertiary); }
+
+/* ─── Runs table ─── */
+.runsTable {
+  width: 100%;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+
+.runsTable th,
+.runsTable td {
+  padding: 7px 5px;
+  border-bottom: 0.5px solid var(--border-default);
+  text-align: left;
+}
+
+.runsTable th {
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.runsTable td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+.runsTable td.mono {
+  font-family: var(--font-mono);
+}
+
+.runsEmpty {
+  text-align: center;
+  padding: 30px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* ─── Generate / progress panel ─── */
+.genPanel {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: var(--bg-primary);
+  border: 0.5px solid var(--border-default);
+  border-radius: var(--border-radius-md);
+}
+
+.genFormRow {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.genFormLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.genFormActions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ─── Progress bar ─── */
+.progressWrap {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.progressBar {
+  width: 100%;
+  height: 4px;
+  background: var(--border-default);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+/* ─── Topology JSON editor ─── */
+.jsonTextarea {
+  width: 100%;
+  min-height: 280px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 10px;
+  border: 0.5px solid var(--border-default);
+  border-radius: var(--border-radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.jsonError {
+  color: var(--danger);
+  font-size: 11px;
+  margin-top: 6px;
+}
