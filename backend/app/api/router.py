@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api import documents, generate, ingest, search, settings, stats, topology
+from app.api import eval as eval_router
 
 router = APIRouter()
 
@@ -11,3 +12,4 @@ router.include_router(topology.router, prefix="/api/topology", tags=["topology"]
 router.include_router(ingest.router, prefix="/api", tags=["ingest"])
 router.include_router(stats.router, prefix="/api", tags=["stats"])
 router.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+router.include_router(eval_router.router, prefix="/api/eval", tags=["eval"])

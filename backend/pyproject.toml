@@ -24,6 +24,9 @@ dependencies = [
 
     # Logging / Utils
     "loguru>=0.7",
+
+    # Evaluation
+    "ir_measures>=0.4",
 ]
 
 [project.optional-dependencies]
