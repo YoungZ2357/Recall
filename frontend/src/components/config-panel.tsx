@@ -141,6 +141,34 @@ export function ConfigPanel({ open, onClose, config, onChange }: ConfigPanelProp
           className={styles.numInput}
         />
       </div>
+      {config.topo !== 'custom' && (
+        <>
+          <div className={styles.inlineRow}>
+            <span className={styles.inlineLabel}>recall threshold</span>
+            <input
+              type="number"
+              value={config.vectorThreshold}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={e => onChange({ vectorThreshold: Math.min(1, Math.max(0, Number(e.target.value))) })}
+              className={styles.numInput}
+            />
+          </div>
+          <div className={styles.inlineRow}>
+            <span className={styles.inlineLabel}>precision threshold</span>
+            <input
+              type="number"
+              value={config.rerankerThreshold}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={e => onChange({ rerankerThreshold: Math.min(1, Math.max(0, Number(e.target.value))) })}
+              className={styles.numInput}
+            />
+          </div>
+        </>
+      )}
       <div className={styles.sectionGap} />
 
       {/* Rerank weights */}

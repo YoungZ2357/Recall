@@ -15,12 +15,13 @@ function rerankerConfig(config: SearchConfig): Record<string, unknown> {
     beta: config.beta,
     gamma: config.gamma,
     retention_mode: config.retention,
+    score_threshold: config.rerankerThreshold,
   };
 }
 
 function vectorOnly(config: SearchConfig): TopologySpecJSON {
   const nodes: NodeSpecJSON[] = [
-    { node_id: 'vec',    node_type: 'VectorSearcher', config: {} },
+    { node_id: 'vec',    node_type: 'VectorSearcher', config: { score_threshold: config.vectorThreshold } },
     { node_id: 'rerank', node_type: 'Reranker',       config: rerankerConfig(config) },
   ];
   return {
@@ -31,7 +32,7 @@ function vectorOnly(config: SearchConfig): TopologySpecJSON {
 
 function bm25Only(config: SearchConfig): TopologySpecJSON {
   const nodes: NodeSpecJSON[] = [
-    { node_id: 'bm25',   node_type: 'BM25Searcher', config: {} },
+    { node_id: 'bm25',   node_type: 'BM25Searcher', config: { score_threshold: config.vectorThreshold } },
     { node_id: 'rerank', node_type: 'Reranker',     config: rerankerConfig(config) },
   ];
   return {
@@ -42,8 +43,8 @@ function bm25Only(config: SearchConfig): TopologySpecJSON {
 
 function rrfHybrid(config: SearchConfig): TopologySpecJSON {
   const nodes: NodeSpecJSON[] = [
-    { node_id: 'vec',    node_type: 'VectorSearcher', config: {} },
-    { node_id: 'bm25',   node_type: 'BM25Searcher',   config: {} },
+    { node_id: 'vec',    node_type: 'VectorSearcher', config: { score_threshold: config.vectorThreshold } },
+    { node_id: 'bm25',   node_type: 'BM25Searcher',   config: { score_threshold: config.vectorThreshold } },
     { node_id: 'merge',  node_type: 'RRFMerger',      config: {} },
     { node_id: 'rerank', node_type: 'Reranker',       config: rerankerConfig(config) },
   ];
