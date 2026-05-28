@@ -10,7 +10,14 @@ from app.core.exceptions import ConfigError
 from app.core.vectordb import QdrantService
 from app.generation.generator import LLMGenerator
 from app.ingestion.embedder import APIEmbedder
-from app.services import GenerationService, IngestionService, ReindexService, SearchService
+from app.services import (
+    EvaluationService,
+    GenerationService,
+    IngestionService,
+    ReindexService,
+    SearchService,
+)
+from app.services.eval_task_store import EvalTaskStore
 from app.services.task_store import TaskStore
 
 # --- Base resources (extracted from app.state) ---
@@ -36,6 +43,13 @@ def get_generator(request: Request) -> LLMGenerator:
     if gen is None:
         raise ConfigError(message="LLM_API_KEY is not configured")
     return gen
+
+
+def get_generator_optional(request: Request) -> LLMGenerator | None:
+    """Same as get_generator but tolerates None — for services that gate
+    behavior internally (e.g. EvaluationService disables generate-set when
+    LLM is not configured but still serves list/run endpoints)."""
+    return request.app.state.generator
 
 
 # get_session from database.py is already FastAPI Depends-compatible
@@ -93,6 +107,29 @@ def get_task_store(request: Request) -> TaskStore:
     return request.app.state.task_store
 
 
+def get_eval_task_store(request: Request) -> EvalTaskStore:
+    return request.app.state.eval_task_store
+
+
+def get_evaluation_service(
+    request: Request,
+    qdrant: Annotated[QdrantService, Depends(get_qdrant)],
+    embedder: Annotated[APIEmbedder, Depends(get_embedder)],
+    session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
+    generator: Annotated[LLMGenerator | None, Depends(get_generator_optional)],
+    search_service: Annotated[SearchService, Depends(get_search_service)],
+) -> EvaluationService:
+    return EvaluationService(
+        embedder=embedder,
+        qdrant_client=qdrant,
+        session_factory=session_factory,
+        generator=generator,
+        search_service=search_service,
+        test_set_dir=request.app.state.eval_test_set_dir,
+        report_dir=request.app.state.eval_report_dir,
+    )
+
+
 # --- Type aliases (for concise route annotations) ---
 
 QdrantDep = Annotated[QdrantService, Depends(get_qdrant)]
@@ -105,3 +142,5 @@ SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
 GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]
 ReindexServiceDep = Annotated[ReindexService, Depends(get_reindex_service)]
 TaskStoreDep = Annotated[TaskStore, Depends(get_task_store)]
+EvalTaskStoreDep = Annotated[EvalTaskStore, Depends(get_eval_task_store)]
+EvaluationServiceDep = Annotated[EvaluationService, Depends(get_evaluation_service)]

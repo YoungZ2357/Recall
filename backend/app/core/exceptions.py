@@ -316,3 +316,77 @@ class GenerationError(RecallError):
 
     status_code = 502
     message = "Failed to generate LLM response"
+
+
+# ============================================================
+# Evaluation
+# ============================================================
+
+class EvaluationError(RecallError):
+    """Evaluation pipeline failure (base class)."""
+
+    status_code = 500
+    message = "Evaluation failed"
+
+
+class TestSetNotFoundError(EvaluationError):
+    """Requested test set file does not exist."""
+
+    status_code = 404
+    message = "Test set does not exist"
+
+    def __init__(self, name: str | None = None, **kwargs) -> None:
+        msg = f"Test set does not exist: {name}" if name else None
+        super().__init__(message=msg, **kwargs)
+        self.name = name
+
+
+class TestSetAlreadyExistsError(EvaluationError):
+    """A test set with the same name already exists."""
+
+    status_code = 409
+    message = "Test set already exists"
+
+    def __init__(self, name: str | None = None, **kwargs) -> None:
+        msg = f"Test set already exists: {name}" if name else None
+        super().__init__(message=msg, **kwargs)
+        self.name = name
+
+
+class InvalidTestSetNameError(EvaluationError):
+    """Test set / report name failed validation."""
+
+    status_code = 422
+    message = "Invalid name: must match [A-Za-z0-9_-]{1,64}"
+
+    def __init__(self, name: str | None = None, **kwargs) -> None:
+        msg = (
+            f"Invalid name {name!r}: must match [A-Za-z0-9_-]{{1,64}}"
+            if name is not None else None
+        )
+        super().__init__(message=msg, **kwargs)
+        self.name = name
+
+
+class EvalTaskNotFoundError(EvaluationError):
+    """Evaluation task id does not exist in the in-memory store."""
+
+    status_code = 404
+    message = "Eval task does not exist"
+
+    def __init__(self, task_id: str | None = None, **kwargs) -> None:
+        msg = f"Eval task does not exist: {task_id}" if task_id else None
+        super().__init__(message=msg, **kwargs)
+        self.task_id = task_id
+
+
+class ReportNotFoundError(EvaluationError):
+    """Requested evaluation report file does not exist."""
+
+    status_code = 404
+    message = "Eval report does not exist"
+
+    def __init__(self, name: str | None = None, **kwargs) -> None:
+        msg = f"Eval report does not exist: {name}" if name else None
+        super().__init__(message=msg, **kwargs)
+        self.name = name

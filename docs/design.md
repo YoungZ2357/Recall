@@ -88,4 +88,38 @@ $$
 
 > Pipeline 末端统一完成内容填充（content hydration）和访问记录（access recording），保证所有调用方（CLI/API/MCP）自动获得 Ebbinghaus 追踪。Rerank session 与写操作 session 分离：rerank 只读，access recording 写入后 commit。
 
-##
+## Evaluation
+
+### Graded relevance via LLM-pooled qrels
+
+2026-05-28
+
+- 数据集生成三段式：`sample_chunks → synthesize_queries → expand_with_graded_pool`
+- 源 chunk（生成 query 的那条）强制 grade=3，不送 LLM 评分（query 定义上必然可由它回答）
+- 候选池来源：**vector-only** 召回 top-50（默认），绕开 reranker 避免把当前 reranker 的行为泄漏到 ground truth。`score_threshold=0.0` 取满池，不预过滤
+- 评分粒度：每个 query 一次 LLM 调用，候选 chunk 以 `[#1] / [#2] / ...` 编号列出，要求返回 `[{id, grade}]`。批量横向比较 + 节省调用量。content 截断 1200 字符防止上下文过长
+- Grading rubric（0-3）：3 直接回答 / 2 必要支撑信息 / 1 仅背景 / 0 无关。指令要求"宁可保守判 0"
+- 失败 fallback：JSON 解析失败重试 1 次，仍失败则该 query 全部候选默认 grade=0（源 chunk 锚定不受影响）
+
+> Pool bias 缓解：vector-only + 大池 + 源 chunk 锚定。三层叠加后，剩余偏差主要是"当前 retriever 完全召不回的真相关 chunk"，可接受。模型切换或检索器升级后建议重新生成数据集。
+
+### Metrics via ir_measures
+
+2026-05-28
+
+- 标准指标套件：`nDCG@k`, `R(rel=2)@k`, `RR(rel=2)`, `AP(rel=2)`
+- `rel>=2` 阈值用于二元指标（Recall / MRR / MAP）—— grade 1（仅背景）不计入相关
+- nDCG 默认指数 gain（`2^rel - 1`），原生支持 graded relevance
+- Schema 用 `metrics: dict[str, float]` 动态承载，便于扩展新指标而不改 ORM
+- Run score 直接用 reranker 的 `final_score`，平局由 ir_measures 内部按 docid 字典序打破
+
+> 抛弃自实现 metrics.py。ir_measures 是 TREC 标准库，pure Python，对接 IR 评估社区做法，避免自己重复造轮子和潜在的指标定义分歧。
+
+### TestSetEntry schema
+
+2026-05-28
+
+- 字段：`query_id` (UUID4), `query`, `relevance: dict[chunk_id, grade]`, `source_document_id`, `source_chunk_id`, `metadata`
+- `metadata.grader_model` 在 pool 扩展后填入；`generator_model` 在 synthesis 阶段填入
+- annotate.py（人工标注）输出同样 schema，但 `relevance` 仅含 `{source_chunk_id: 3}`——不引入交互式 pool 评分，保持人工流程轻量
+- 旧 binary schema（`ground_truth_chunk_ids: list[str]`）已断舍离，不做向后兼容

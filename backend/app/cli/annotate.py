@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -119,12 +120,15 @@ async def _run_annotate(doc_id: str, output_path: str | None) -> None:
                             break
 
                         annotations.append({
+                            "query_id": str(uuid.uuid4()),
                             "query": query_text,
-                            "ground_truth_chunk_ids": [str(chunk.chunk_id)],
+                            "relevance": {str(chunk.chunk_id): 3},
                             "source_document_id": str(doc_uuid),
+                            "source_chunk_id": str(chunk.chunk_id),
                             "metadata": {
                                 "query_type": qt,
                                 "generator_model": "human",
+                                "grader_model": None,
                             },
                         })
                         added_this_round += 1
