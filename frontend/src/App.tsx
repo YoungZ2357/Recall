@@ -5,6 +5,7 @@ import { SearchPage } from './pages/search/search-page';
 import { LibraryPage } from './pages/library/library-page';
 import { IngestPage } from './pages/ingest/ingest-page';
 import { SettingsPage } from './pages/settings/settings-page';
+import { PipelinePage } from './pages/pipeline/pipeline-page';
 import { EvalPage } from './pages/eval/eval-page';
 import { useIngestStore } from './stores/ingest-store';
 
@@ -32,6 +33,14 @@ function App() {
           <Route path="/ingest" element={<IngestPage />} />
           <Route path="/eval" element={<EvalPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/pipeline" element={<PipelinePage />} />
+          {COMING_SOON_ROUTES.map(path => (
+            <Route
+              key={path}
+              path={path}
+              element={<ComingSoon name={path.slice(1)} />}
+            />
+          ))}
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

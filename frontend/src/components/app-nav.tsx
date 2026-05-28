@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { label: 'Search', to: '/search' },
   { label: 'Library', to: '/library' },
   { label: 'Ingest', to: '/ingest' },
+  { label: 'Pipeline', to: '/pipeline' },
   { label: 'Eval', to: '/eval' },
   { label: 'Settings', to: '/settings' },
 ] as const;

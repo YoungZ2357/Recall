@@ -1,0 +1,310 @@
+/* ── shell ── */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--page-bg);
+  color: var(--text-primary);
+}
+
+/* ── two-column body ── */
+
+.body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+/* ── sidebar ── */
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--card-bg);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px;
+  overflow-y: auto;
+  gap: 2px;
+}
+
+.sidebarHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 2px;
+  margin-bottom: 8px;
+}
+
+.sidebarTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.newBtn {
+  font-size: 11px;
+  color: var(--info-fg);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.newBtn:hover {
+  background: var(--info-bg);
+  border-color: var(--info-fg);
+}
+
+.filterInput {
+  width: 100%;
+  padding: 5px 7px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  margin-bottom: 6px;
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.filterInput::placeholder {
+  color: var(--text-muted);
+}
+
+.filterInput:focus {
+  border-color: var(--accent);
+}
+
+.loadingMsg {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 6px;
+}
+
+/* ── preset items ── */
+
+.presetItem {
+  padding: 7px 8px;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  transition: background 0.1s;
+  border: 1px solid transparent;
+  outline: none;
+}
+
+.presetItem:hover {
+  background: var(--surface);
+}
+
+.presetItemActive {
+  background: var(--info-bg);
+  border-color: var(--info-fg);
+}
+
+.presetName {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.presetItemActive .presetName {
+  color: var(--info-fg);
+}
+
+.presetMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.presetItemActive .presetMeta {
+  color: color-mix(in srgb, var(--info-fg) 70%, transparent);
+}
+
+.draftBadge {
+  color: var(--warning-fg);
+}
+
+.builtinDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--success-fg);
+  flex-shrink: 0;
+}
+
+/* ── main panel ── */
+
+.main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--page-bg);
+}
+
+.emptyState {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ── topology header ── */
+
+.topoHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  flex-shrink: 0;
+  min-height: 44px;
+}
+
+.topoName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dirtyDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning-fg);
+  flex-shrink: 0;
+}
+
+.builtinBadge {
+  font-size: 11px;
+  color: var(--success-fg);
+  background: var(--success-bg);
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+
+.topoDate {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.topoActions {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+}
+
+.headerBtn {
+  font-size: 12px;
+  color: var(--danger);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.headerBtn:hover {
+  text-decoration: underline;
+}
+
+/* ── toolbar ── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  flex-shrink: 0;
+}
+
+.toolBtnPrimary {
+  padding: 4px 10px;
+  background: var(--info-bg);
+  color: var(--info-fg);
+  border: 1px solid var(--info-fg);
+  border-radius: var(--border-radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toolBtnPrimary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.toolBtnPrimary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  font-size: 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toolBtn:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.toolBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolBtnSave {
+  margin-left: auto;
+}
+
+/* ── canvas + inspector wrapper ── */
+
+.canvasWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── validation error banner ── */
+
+.errorBanner {
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--danger) 20%, transparent);
+  flex-shrink: 0;
+}

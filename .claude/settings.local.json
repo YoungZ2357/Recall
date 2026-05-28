@@ -15,6 +15,7 @@
       "Bash(Select-Object FullName)",
       "Bash(Get-ChildItem -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\\\\frontend\\\\src\" -Recurse -Include \"*.tsx\", \"*.ts\", \"*.jsx\", \"*.js\")",
       "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(grep -E \"\\\\.\\(css|tsx|ts\\)$\")"
       "Bash(cd /mnt/d/files/coding/portfolio/Recall/frontend && find . -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) | grep -E \"\\(search|eval|api|types|store\\)\" | head -20)"
     ]
   }
