@@ -14,7 +14,8 @@
       "Bash(Get-ChildItem -Recurse -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\\\\frontend\\\\src\\\\pages\\\\search\")",
       "Bash(Select-Object FullName)",
       "Bash(Get-ChildItem -Path \"D:\\\\files\\\\coding\\\\portfolio\\\\Recall\\\\frontend\\\\src\" -Recurse -Include \"*.tsx\", \"*.ts\", \"*.jsx\", \"*.js\")",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(grep -E \"\\\\.\\(css|tsx|ts\\)$\")"
     ]
   }
 }

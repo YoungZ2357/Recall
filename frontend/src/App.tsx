@@ -5,6 +5,7 @@ import { SearchPage } from './pages/search/search-page';
 import { LibraryPage } from './pages/library/library-page';
 import { IngestPage } from './pages/ingest/ingest-page';
 import { SettingsPage } from './pages/settings/settings-page';
+import { PipelinePage } from './pages/pipeline/pipeline-page';
 import { useIngestStore } from './stores/ingest-store';
 
 const COMING_SOON_ROUTES = ['/eval'];
@@ -40,6 +41,7 @@ function App() {
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/ingest" element={<IngestPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/pipeline" element={<PipelinePage />} />
           {COMING_SOON_ROUTES.map(path => (
             <Route
               key={path}

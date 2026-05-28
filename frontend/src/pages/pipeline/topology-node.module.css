@@ -1,0 +1,59 @@
+/* ── base node ── */
+
+.node {
+  padding: 8px 16px;
+  border-radius: var(--border-radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  min-width: 96px;
+  text-align: center;
+  position: relative;
+  cursor: default;
+  user-select: none;
+  line-height: 1.4;
+}
+
+/* ── role-based colours ── */
+
+.source {
+  background: var(--badge-vec-bg);
+  color: var(--badge-vec-fg);
+  border-color: color-mix(in srgb, var(--badge-vec-fg) 30%, transparent);
+}
+
+.merge {
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  border-color: color-mix(in srgb, var(--warning-fg) 30%, transparent);
+}
+
+.transform {
+  background: var(--accent-surface);
+  color: var(--accent-text);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* ── selected state (dashed outline) ── */
+
+.selected {
+  outline: 1.5px dashed var(--info-fg);
+  outline-offset: 3px;
+}
+
+/* ── unavailable nodes ── */
+
+.unavailable {
+  opacity: 0.45;
+}
+
+/* ── React Flow handle dots ── */
+
+.handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--card-bg) !important;
+  border: 1.5px solid var(--border-emphasis) !important;
+  border-radius: 50% !important;
+}

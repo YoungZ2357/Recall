@@ -1,0 +1,64 @@
+/* ── canvas wrapper ── */
+
+.canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  /* React Flow needs an explicit height on its container */
+  height: 100%;
+}
+
+/* ── empty state hint ── */
+
+.emptyHint {
+  margin-top: 24px;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  padding: 8px 14px;
+  pointer-events: none;
+}
+
+/* ── bottom-left status line ── */
+
+.statusLine {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  pointer-events: none;
+  margin-bottom: 4px;
+  margin-left: 4px;
+}
+
+.statusValid {
+  color: var(--success-fg);
+}
+
+.statusInvalid {
+  color: var(--danger);
+}
+
+/* ── override React Flow Controls styling to match app theme ── */
+
+.controls :global(.react-flow__controls) {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius-md);
+  box-shadow: none;
+}
+
+.controls :global(.react-flow__controls-button) {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.controls :global(.react-flow__controls-button:hover) {
+  background: var(--surface);
+}
