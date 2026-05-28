@@ -34,13 +34,6 @@ function App() {
           <Route path="/eval" element={<EvalPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/pipeline" element={<PipelinePage />} />
-          {COMING_SOON_ROUTES.map(path => (
-            <Route
-              key={path}
-              path={path}
-              element={<ComingSoon name={path.slice(1)} />}
-            />
-          ))}
         </Routes>
       </BrowserRouter>
     </ConfigProvider>
