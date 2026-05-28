@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,12 @@ from app.cli._init_deps import init_deps, teardown_deps
 from app.config import settings
 from app.core.exceptions import RecallError
 from app.core.runtime_overrides import RuntimeOverrideManager
+from app.services.eval_task_store import EvalTaskStore
 from app.services.task_store import TaskStore
+
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+_EVAL_TEST_SET_DIR = _BACKEND_ROOT / "data" / "eval_test_sets"
+_EVAL_REPORT_DIR = _BACKEND_ROOT / "data" / "eval_reports"
 
 
 @asynccontextmanager
@@ -28,8 +34,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.ingestion_service = resources.ingestion_service
     app.state.reindex_service = resources.reindex_service
     app.state.task_store = TaskStore()
+    app.state.eval_task_store = EvalTaskStore()
     app.state.upload_store: dict[str, str] = {}  # file_id -> abs temp_path
     app.state.overrides = RuntimeOverrideManager(settings)
+
+    # Persistence dirs for the eval API
+    _EVAL_TEST_SET_DIR.mkdir(parents=True, exist_ok=True)
+    _EVAL_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    app.state.eval_test_set_dir = _EVAL_TEST_SET_DIR
+    app.state.eval_report_dir = _EVAL_REPORT_DIR
 
     # Seed builtin topology configs
     async with resources.session_factory() as session:

@@ -41,6 +41,12 @@ def generate_set(
     with_context: Annotated[
         bool, typer.Option("--with-context", help="Prepend each chunk's context to the synthesis prompt.")  # noqa: E501
     ] = False,
+    pool_size: Annotated[
+        int, typer.Option("--pool-size", help="Vector-recall pool depth for graded relevance expansion.")  # noqa: E501
+    ] = 50,
+    skip_grading: Annotated[
+        bool, typer.Option("--skip-grading", help="Skip pool grading; output only source-chunk anchor (grade=3). Useful for debugging the synthesis stage.")  # noqa: E501
+    ] = False,
     include_doc: Annotated[
         list[str], typer.Option("--include-doc", help="Whitelist doc-id(s). Only these documents are sampled. Mutually exclusive with --exclude-doc and --auto-split.")  # noqa: E501
     ] = None,
@@ -51,7 +57,7 @@ def generate_set(
         float, typer.Option("--auto-split", help="Fraction (0-1) of documents to randomly select for sampling. Saves a split manifest JSON alongside the output. Mutually exclusive with --include-doc and --exclude-doc.")  # noqa: E501
     ] = 0.0,
 ) -> None:
-    """Sample chunks and generate a synthetic evaluation test set via LLM."""
+    """Sample chunks, synthesize queries, then LLM-grade vector-recall pool for graded qrels."""
     # Validate mutual exclusivity
     if exclude_doc is None:
         exclude_doc = []
@@ -64,9 +70,13 @@ def generate_set(
     if auto_split < 0.0 or auto_split > 1.0:
         console.print("[red]Error: --auto-split must be between 0.0 and 1.0.[/red]")
         raise typer.Exit(code=1)
+    if pool_size < 1:
+        console.print("[red]Error: --pool-size must be >= 1.[/red]")
+        raise typer.Exit(code=1)
 
     asyncio.run(_run_generate_set(
         output, num_chunks, queries_per_chunk, min_length, concurrency, with_context,
+        pool_size, skip_grading,
         list(include_doc), list(exclude_doc), auto_split,
     ))
 
@@ -99,7 +109,9 @@ async def _run_generate_set(
     queries_per_chunk: int,
     min_length: int,
     concurrency: int,
-    with_context: bool = False,
+    with_context: bool,
+    pool_size: int,
+    skip_grading: bool,
     include_doc_ids: list[str] | None = None,
     exclude_doc_ids: list[str] | None = None,
     auto_split: float = 0.0,
@@ -109,7 +121,7 @@ async def _run_generate_set(
     from app.config import settings
     from app.core.repository import DocumentRepository
     from app.evaluation.sampler import sample_chunks_stratified
-    from app.evaluation.synthesizer import generate_test_set
+    from app.evaluation.synthesizer import expand_with_graded_pool, generate_test_set
 
     resources = await init_deps()
     try:
@@ -179,7 +191,22 @@ async def _run_generate_set(
             with_context=with_context,
         )
 
-        # 3. Write JSON
+        # 3. Expand with graded pool
+        if not skip_grading and entries:
+            await expand_with_graded_pool(
+                entries,
+                embedder=resources.embedder,
+                qdrant_client=resources.qdrant_client,
+                session_factory=resources.session_factory,
+                generator=generator,
+                pool_size=pool_size,
+                concurrency=concurrency,
+                grader_model=settings.llm_model,
+            )
+        elif skip_grading:
+            console.print("[dim]Pool grading skipped — entries retain source-chunk anchor only.[/dim]")  # noqa: E501
+
+        # 4. Write JSON
         out = Path(output_path)
         await asyncio.to_thread(lambda: out.parent.mkdir(parents=True, exist_ok=True))
         out_json = json.dumps(
@@ -239,37 +266,47 @@ async def _run_eval(
                 query_callback=on_query,
             )
 
-        # Display summary table
+        # Aggregate summary
         summary = Table(title="Evaluation Summary")
         summary.add_column("Metric", style="cyan")
         summary.add_column("Value", justify="right")
         summary.add_row("Queries", str(report.num_queries))
         summary.add_row("Top-K", str(report.top_k))
-        summary.add_row("MRR", f"{report.mrr:.4f}")
-        summary.add_row(f"nDCG@{top_k}", f"{report.mean_ndcg_at_k:.4f}")
-        summary.add_row(f"Recall@{top_k}", f"{report.mean_recall_at_k:.4f}")
+        for metric_name, value in report.aggregate_metrics.items():
+            summary.add_row(metric_name, f"{value:.4f}")
         console.print(summary)
 
-        # Per-query detail table
+        # Per-query detail
+        metric_columns = list(report.aggregate_metrics.keys())
         detail = Table(title="Per-Query Results")
         detail.add_column("#", style="dim", width=4)
-        detail.add_column("Query", max_width=60)
-        detail.add_column("RR", justify="right", width=7)
-        detail.add_column("nDCG", justify="right", width=7)
-        detail.add_column("Recall", justify="right", width=7)
-        detail.add_column("Hits", justify="right", width=5)
+        detail.add_column("Query", max_width=50)
+        for m in metric_columns:
+            detail.add_column(m, justify="right")
+        detail.add_column("Rel↑2 Hits", justify="right", width=10)
 
         for i, r in enumerate(report.per_query, start=1):
-            hits = len(set(r.ground_truth_chunk_ids) & set(r.retrieved_chunk_ids))
-            query_preview = r.query[:55] + "..." if len(r.query) > 55 else r.query
-            detail.add_row(
-                str(i),
-                query_preview,
-                f"{r.reciprocal_rank:.3f}",
-                f"{r.ndcg_at_k:.3f}",
-                f"{r.recall_at_k:.3f}",
-                f"{hits}/{len(r.ground_truth_chunk_ids)}",
+            # Count rel>=2 hits in retrieved top-k via test_set lookup
+            entry_lookup = next(
+                (e for e in test_set if e.query_id == r.query_id), None,
             )
+            if entry_lookup is None:
+                hits_str = "—"
+                rel_count = 0
+            else:
+                rel_set = {
+                    cid for cid, g in entry_lookup.relevance.items() if g >= 2
+                }
+                hits = sum(1 for cid in r.retrieved_chunk_ids[:top_k] if cid in rel_set)
+                rel_count = len(rel_set)
+                hits_str = f"{hits}/{rel_count}"
+
+            query_preview = r.query[:45] + "..." if len(r.query) > 45 else r.query
+            row = [str(i), query_preview]
+            for m in metric_columns:
+                row.append(f"{r.metrics.get(m, 0.0):.3f}")
+            row.append(hits_str)
+            detail.add_row(*row)
 
         console.print(detail)
 
