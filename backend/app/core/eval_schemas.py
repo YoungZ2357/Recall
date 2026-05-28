@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.evaluation.schemas import EvalReport, TestSetEntry
+from app.retrieval.topology import TopologySpecJSON
 
 # ============================================================
 # Constants
@@ -73,6 +74,13 @@ class RunEvalRequest(BaseModel):
         description="Report filename stem; defaults to test_set_name when omitted",
     )
     persist_report: bool = True
+    topology: TopologySpecJSON | None = Field(
+        default=None,
+        description=(
+            "Optional per-run topology override. Reranker α/β/γ are passed by "
+            "setting them on the Reranker node's config inside this spec."
+        ),
+    )
 
     @field_validator("test_set_name")
     @classmethod
@@ -152,6 +160,12 @@ class ReportSummaryResponse(BaseModel):
     num_queries: int
     top_k: int
     aggregate_metrics: dict[str, float]
+    # Filled from EvalReport.run_config when present; None for legacy reports
+    # generated before the run_config field existed.
+    test_set_name: str | None = None
+    topology_name: str | None = None
+    weights: dict[str, float] | None = None
+    mode: str | None = None
 
 
 # Full report response — re-export EvalReport so routes can annotate cleanly

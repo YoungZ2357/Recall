@@ -35,10 +35,11 @@ from app.core.repository import DocumentRepository
 from app.core.vectordb import QdrantService
 from app.evaluation.runner import run_evaluation
 from app.evaluation.sampler import sample_chunks_stratified
-from app.evaluation.schemas import EvalReport, TestSetEntry
+from app.evaluation.schemas import EvalReport, RunConfig, TestSetEntry
 from app.evaluation.synthesizer import expand_with_graded_pool, generate_test_set
 from app.generation.generator import LLMGenerator
 from app.ingestion.embedder import BaseEmbedder
+from app.retrieval.topology import TopologySpecJSON
 from app.services.eval_task_store import GenerateStage
 
 if TYPE_CHECKING:
@@ -48,6 +49,43 @@ logger = logging.getLogger(__name__)
 
 
 _NAME_RE = re.compile(NAME_PATTERN.pattern)
+
+
+def _build_run_config(
+    test_set_name: str,
+    mode: Literal["prefer_recent", "awaken_forgotten"],
+    topology_spec: TopologySpecJSON | None,
+) -> RunConfig:
+    """Derive a RunConfig snapshot from a run's inputs.
+
+    Extracts α/β/γ from the topology spec's Reranker node config when present.
+    Falls back to a name-only RunConfig (topology=None, weights=None) when no
+    spec is provided — that signals "server defaults were used".
+    """
+    if topology_spec is None:
+        return RunConfig(test_set_name=test_set_name, mode=mode)
+
+    topology_name = topology_spec.name
+    weights: dict[str, float] | None = None
+    for node in topology_spec.nodes:
+        # node_type is the registry key; Reranker is the only operator that
+        # carries α/β/γ. Match on the canonical registry name.
+        if node.node_type == "Reranker":
+            cfg = node.config or {}
+            extracted = {
+                k: float(cfg[k])
+                for k in ("alpha", "beta", "gamma")
+                if k in cfg
+            }
+            if extracted:
+                weights = extracted
+            break
+    return RunConfig(
+        test_set_name=test_set_name,
+        mode=mode,
+        topology_name=topology_name,
+        weights=weights,
+    )
 
 
 class EvaluationService:
@@ -217,6 +255,65 @@ class EvaluationService:
         await asyncio.to_thread(path.write_text, payload, encoding="utf-8")
 
     # ------------------------------------------------------------------
+    # Upload test set
+    # ------------------------------------------------------------------
+
+    async def upload_test_set(
+        self,
+        file_bytes: bytes,
+        name: str,
+        *,
+        overwrite: bool = False,
+    ) -> TestSetSummaryResponse:
+        """Persist an uploaded test set file under ``test_set_dir/{name}.json``.
+
+        Validates the payload by parsing every entry through ``TestSetEntry``
+        so a subsequent run won't crash on malformed data.
+
+        Raises:
+            InvalidTestSetNameError: name fails NAME_PATTERN.
+            TestSetAlreadyExistsError: file exists and ``overwrite`` is False.
+            ConfigError: payload is not a JSON list of TestSetEntry-compatible
+                objects.
+        """
+        # Name validation + traversal guard (must_exist=False since we create).
+        path = self._resolve_test_set_path(name, must_exist=False)
+        if path.exists() and not overwrite:
+            raise TestSetAlreadyExistsError(name=name)
+
+        # Strict validation: decode + parse every entry so bad payloads
+        # fail at upload time instead of mid-run.
+        try:
+            text = file_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ConfigError(
+                message="Uploaded test set is not valid UTF-8",
+                detail=str(exc),
+            ) from exc
+        try:
+            raw = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise ConfigError(
+                message="Uploaded test set is not valid JSON",
+                detail=str(exc),
+            ) from exc
+        if not isinstance(raw, list):
+            raise ConfigError(
+                message="Uploaded test set must be a JSON list of entries",
+            )
+        try:
+            entries = [TestSetEntry.model_validate(item) for item in raw]
+        except (ValueError, TypeError) as exc:
+            raise ConfigError(
+                message="Uploaded test set has invalid entries",
+                detail=str(exc),
+            ) from exc
+
+        await self._write_test_set(path, entries)
+        logger.info("Uploaded test set %r with %d entries to %s", name, len(entries), path)
+        return self.load_test_set_summary(name)
+
+    # ------------------------------------------------------------------
     # Run evaluation
     # ------------------------------------------------------------------
 
@@ -229,20 +326,39 @@ class EvaluationService:
         report_name: str | None = None,
         persist_report: bool = True,
         progress_cb: Callable[[int, int], None] | None = None,
+        topology_spec: TopologySpecJSON | None = None,
     ) -> tuple[EvalReport, Path | None]:
         """Load a test set, run retrieval evaluation, optionally persist report.
+
+        When ``topology_spec`` is given, opens a DB session so the search
+        service can resolve/build a per-run pipeline; otherwise the search
+        service's default pipeline is used.
 
         Returns ``(report, persisted_path_or_None)``.
         """
         entries = self.load_test_set(test_set_name)
+        run_config = _build_run_config(test_set_name, mode, topology_spec)
 
-        report = await run_evaluation(
-            self._search_service,
-            entries,
-            top_k=top_k,
-            retention_mode=mode,
-            query_callback=progress_cb,
-        )
+        if topology_spec is not None:
+            async with self._session_factory() as session:
+                report = await run_evaluation(
+                    self._search_service,
+                    entries,
+                    top_k=top_k,
+                    retention_mode=mode,
+                    query_callback=progress_cb,
+                    topology_spec=topology_spec,
+                    topology_session=session,
+                )
+        else:
+            report = await run_evaluation(
+                self._search_service,
+                entries,
+                top_k=top_k,
+                retention_mode=mode,
+                query_callback=progress_cb,
+            )
+        report.run_config = run_config
 
         saved_path: Path | None = None
         if persist_report:
@@ -331,12 +447,17 @@ class EvaluationService:
                 logger.warning("Skipping unreadable eval report: %s", p)
                 continue
             stat = p.stat()
+            rc = report.run_config
             out.append(ReportSummaryResponse(
                 name=p.stem,
                 created_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC).isoformat(),
                 num_queries=report.num_queries,
                 top_k=report.top_k,
                 aggregate_metrics=report.aggregate_metrics,
+                test_set_name=rc.test_set_name if rc else None,
+                topology_name=rc.topology_name if rc else None,
+                weights=rc.weights if rc else None,
+                mode=rc.mode if rc else None,
             ))
         return out
 

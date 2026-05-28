@@ -81,6 +81,7 @@ async def execute_eval_run_task(
             report_name=request.report_name,
             persist_report=request.persist_report,
             progress_cb=progress_cb,
+            topology_spec=request.topology,
         )
         summary = {
             "num_queries": report.num_queries,

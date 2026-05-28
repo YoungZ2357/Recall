@@ -20,6 +20,9 @@ from ir_measures import AP, RR, Measure, R, nDCG
 from app.evaluation.schemas import EvalReport, EvalResult, TestSetEntry
 
 if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.retrieval.topology import TopologySpecJSON
     from app.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
@@ -41,6 +44,8 @@ async def run_evaluation(
     top_k: int = 10,
     retention_mode: Literal["prefer_recent", "awaken_forgotten"] = "prefer_recent",
     query_callback: Callable[[int, int], None] | None = None,
+    topology_spec: TopologySpecJSON | None = None,
+    topology_session: AsyncSession | None = None,
 ) -> EvalReport:
     """Execute evaluation over the full test set.
 
@@ -76,6 +81,8 @@ async def run_evaluation(
             top_k=top_k,
             retention_mode=retention_mode,
             record_access=False,
+            topology_spec=topology_spec,
+            topology_session=topology_session,
         )
         retrieved_ids = [str(r.chunk_id) for r in results]
 

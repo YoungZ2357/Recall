@@ -5,6 +5,8 @@ Grading rubric: 3 = direct answer, 2 = necessary supporting info,
 1 = background only, 0 = irrelevant.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -41,9 +43,27 @@ class EvalResult(BaseModel):
     metrics: dict[str, float] = Field(default_factory=dict)
 
 
+class RunConfig(BaseModel):
+    """Configuration that produced an EvalReport.
+
+    Persisted alongside the report so the frontend can render the historical
+    runs table (topology + α/β/γ + mode) without re-deriving from filenames.
+
+    `topology_name` is a free-form label (e.g. "vector" / "bm25" / "v_b_rrf"
+    / "custom"); when None, the server's default topology was used.
+    `weights` mirrors the reranker config keys (alpha/beta/gamma) when those
+    were specified in the run's topology spec.
+    """
+    test_set_name: str
+    mode: Literal["prefer_recent", "awaken_forgotten"]
+    topology_name: str | None = None
+    weights: dict[str, float] | None = None
+
+
 class EvalReport(BaseModel):
     """Aggregate evaluation report."""
     num_queries: int
     top_k: int
     aggregate_metrics: dict[str, float] = Field(default_factory=dict)
     per_query: list[EvalResult]
+    run_config: RunConfig | None = None

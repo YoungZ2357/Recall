@@ -16,7 +16,7 @@ from app.services.eval_task_store import EvalTaskStore
 from app.services.task_store import TaskStore
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
-_EVAL_TEST_SET_DIR = _BACKEND_ROOT / "data" / "eval_test_sets"
+_EVAL_TEST_SET_DIR = _BACKEND_ROOT / "data" / "eval_sets"
 _EVAL_REPORT_DIR = _BACKEND_ROOT / "data" / "eval_reports"
 
 

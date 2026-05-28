@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Form, Query, UploadFile
 
 from app.api.dependencies import (
     EvalTaskStoreDep,
@@ -192,6 +193,29 @@ async def delete_test_set(
     eval_service: EvaluationServiceDep,
 ) -> None:
     eval_service.delete_test_set(name)
+
+
+@router.post("/test-sets/upload", response_model=TestSetSummaryResponse, status_code=201)
+async def upload_test_set(
+    eval_service: EvaluationServiceDep,
+    file: UploadFile,
+    name: Annotated[str | None, Form()] = None,
+    overwrite: Annotated[bool, Form()] = False,
+) -> TestSetSummaryResponse:
+    """Upload a pre-generated test set JSON file.
+
+    The file content must be a JSON list of TestSetEntry-compatible objects.
+    Name defaults to the uploaded file's stem when not provided. After write,
+    the file lives under the eval test-set directory and is auto-discovered
+    by ``GET /api/eval/test-sets``.
+    """
+    if name is None:
+        # Derive a default name from the upload filename's stem.
+        raw_name = (file.filename or "uploaded").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        name = raw_name.rsplit(".", 1)[0] if "." in raw_name else raw_name
+
+    body = await file.read()
+    return await eval_service.upload_test_set(body, name=name, overwrite=overwrite)
 
 
 # ============================================================
