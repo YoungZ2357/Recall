@@ -67,11 +67,12 @@ def _build_run_config(
 
     topology_name = topology_spec.name
     weights: dict[str, float] | None = None
+    vector_threshold: float | None = None
+    reranker_threshold: float | None = None
+
     for node in topology_spec.nodes:
-        # node_type is the registry key; Reranker is the only operator that
-        # carries α/β/γ. Match on the canonical registry name.
+        cfg = node.config or {}
         if node.node_type == "Reranker":
-            cfg = node.config or {}
             extracted = {
                 k: float(cfg[k])
                 for k in ("alpha", "beta", "gamma")
@@ -79,12 +80,26 @@ def _build_run_config(
             }
             if extracted:
                 weights = extracted
-            break
+            if "score_threshold" in cfg:
+                reranker_threshold = float(cfg["score_threshold"])
+        elif node.node_type in ("VectorSearcher", "BM25Searcher", "ContextualBM25Searcher"):
+            if vector_threshold is None and "score_threshold" in cfg:
+                vector_threshold = float(cfg["score_threshold"])
+
+    thresholds: dict[str, float] | None = None
+    if vector_threshold is not None or reranker_threshold is not None:
+        thresholds = {}
+        if vector_threshold is not None:
+            thresholds["vector"] = vector_threshold
+        if reranker_threshold is not None:
+            thresholds["reranker"] = reranker_threshold
+
     return RunConfig(
         test_set_name=test_set_name,
         mode=mode,
         topology_name=topology_name,
         weights=weights,
+        thresholds=thresholds,
     )
 
 
@@ -458,6 +473,7 @@ class EvaluationService:
                 topology_name=rc.topology_name if rc else None,
                 weights=rc.weights if rc else None,
                 mode=rc.mode if rc else None,
+                thresholds=rc.thresholds if rc else None,
             ))
         return out
 

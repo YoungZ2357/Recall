@@ -17,6 +17,7 @@ export function EvalPage() {
   const loadTestSets = useEvalStore((s) => s.loadTestSets);
   const loadReports = useEvalStore((s) => s.loadReports);
   const selectTestSet = useEvalStore((s) => s.selectTestSet);
+  const deleteTestSet = useEvalStore((s) => s.deleteTestSet);
   const setGeneratePanelOpen = useEvalStore((s) => s.setGeneratePanelOpen);
   const clearError = useEvalStore((s) => s.clearError);
 
@@ -65,6 +66,7 @@ export function EvalPage() {
               testSets={testSets}
               selectedName={selectedTestSetName}
               onSelect={selectTestSet}
+              onDelete={deleteTestSet}
               onToggleGenerate={() => setGeneratePanelOpen(!generatePanelOpen)}
             />
 

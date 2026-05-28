@@ -166,6 +166,7 @@ class ReportSummaryResponse(BaseModel):
     topology_name: str | None = None
     weights: dict[str, float] | None = None
     mode: str | None = None
+    thresholds: dict[str, float] | None = None
 
 
 # Full report response — re-export EvalReport so routes can annotate cleanly

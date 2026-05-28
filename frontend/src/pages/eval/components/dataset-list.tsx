@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Modal, message } from 'antd';
+import { Modal, Popconfirm, message } from 'antd';
 import { HttpError } from '../../../api/eval';
 import type { TestSetSummary } from '../../../api/types';
 import { useEvalStore } from '../../../stores/eval-store';
@@ -9,6 +9,7 @@ interface Props {
   testSets: TestSetSummary[];
   selectedName: string | null;
   onSelect: (name: string) => void;
+  onDelete: (name: string) => void;
   onToggleGenerate: () => void;
 }
 
@@ -19,7 +20,7 @@ function formatDate(iso: string): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function DatasetList({ testSets, selectedName, onSelect, onToggleGenerate }: Props) {
+export function DatasetList({ testSets, selectedName, onSelect, onDelete, onToggleGenerate }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTestSet = useEvalStore((s) => s.uploadTestSet);
 
@@ -107,6 +108,21 @@ export function DatasetList({ testSets, selectedName, onSelect, onToggleGenerate
                 <div className={styles.datasetMeta}>
                   {ts.entry_count}q · {formatDate(ts.created_at)}
                 </div>
+                <Popconfirm
+                  title="Delete this dataset?"
+                  onConfirm={(e) => { e?.stopPropagation(); onDelete(ts.name); }}
+                  onCancel={(e) => e?.stopPropagation()}
+                  okText="Delete"
+                  cancelText="Cancel"
+                >
+                  <button
+                    className={styles.datasetDeleteBtn}
+                    title="Delete dataset"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    ×
+                  </button>
+                </Popconfirm>
               </div>
             );
           })}

@@ -66,6 +66,7 @@ export interface RunConfig {
   mode: EvalRetentionMode;
   topology_name: string | null;
   weights: Record<string, number> | null;
+  thresholds: Record<string, number> | null;
 }
 
 export interface QueryMetadata {
@@ -119,6 +120,7 @@ export interface ReportSummary {
   topology_name: string | null;
   weights: Record<string, number> | null;
   mode: string | null;
+  thresholds: Record<string, number> | null;
 }
 
 export interface GenerateTestSetRequest {

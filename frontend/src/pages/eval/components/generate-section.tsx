@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, InputNumber, Input, Switch, message } from 'antd';
+import { Button, Switch, message } from 'antd';
 import { useEvalStore } from '../../../stores/eval-store';
 import styles from '../eval-page.module.css';
 
@@ -59,8 +59,9 @@ export function GenerateSection({ open }: Props) {
     <div className={styles.genPanel}>
       <div className={styles.genFormRow}>
         <span className={styles.genFormLabel}>Name *</span>
-        <Input
-          size="small"
+        <input
+          type="text"
+          className={styles.genInput}
           placeholder="e.g. rl_eval_v3"
           value={form.name}
           disabled={isGenerating}
@@ -69,32 +70,44 @@ export function GenerateSection({ open }: Props) {
       </div>
       <div className={styles.genFormRow}>
         <span className={styles.genFormLabel}>Chunks to sample</span>
-        <InputNumber
-          size="small"
+        <input
+          type="number"
+          className={styles.genInput}
           min={1}
           value={form.num_chunks}
           disabled={isGenerating}
-          onChange={(v) => v && setForm({ ...form, num_chunks: v })}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            if (v >= 1) setForm({ ...form, num_chunks: v });
+          }}
         />
       </div>
       <div className={styles.genFormRow}>
         <span className={styles.genFormLabel}>Queries per chunk</span>
-        <InputNumber
-          size="small"
+        <input
+          type="number"
+          className={styles.genInput}
           min={1}
           value={form.queries_per_chunk}
           disabled={isGenerating}
-          onChange={(v) => v && setForm({ ...form, queries_per_chunk: v })}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            if (v >= 1) setForm({ ...form, queries_per_chunk: v });
+          }}
         />
       </div>
       <div className={styles.genFormRow}>
         <span className={styles.genFormLabel}>Pool size</span>
-        <InputNumber
-          size="small"
+        <input
+          type="number"
+          className={styles.genInput}
           min={1}
           value={form.pool_size}
           disabled={isGenerating}
-          onChange={(v) => v && setForm({ ...form, pool_size: v })}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            if (v >= 1) setForm({ ...form, pool_size: v });
+          }}
         />
       </div>
       <div className={styles.genFormRow}>

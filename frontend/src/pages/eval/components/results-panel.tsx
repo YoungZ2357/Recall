@@ -42,6 +42,15 @@ function formatWeights(w: Record<string, number> | null): string {
   return `${(w.alpha ?? 0).toFixed(2)}/${(w.beta ?? 0).toFixed(2)}/${(w.gamma ?? 0).toFixed(2)}`;
 }
 
+function formatThresholds(t: Record<string, number> | null | undefined): string {
+  if (!t) return '—';
+  return `${(t['vector'] ?? 0).toFixed(2)}/${(t['reranker'] ?? 0).toFixed(2)}`;
+}
+
+function isPresetRun(r: ReportSummary): boolean {
+  return r.topology_name !== null && r.topology_name !== 'custom';
+}
+
 function shortTopologyName(name: string | null): string {
   if (!name) return 'default';
   switch (name) {
@@ -137,6 +146,7 @@ export function ResultsPanel({ selectedTestSetName }: Props) {
               <th style={{ width: 22 }}>#</th>
               <th style={{ width: 46 }}>Date</th>
               <th>Topology</th>
+              <th title="vector / reranker score_threshold">Thr</th>
               <th>α/β/γ</th>
               {enabledMetrics.map((m) => (
                 <th key={m} style={{ textAlign: 'right' }}>{METRIC_LABEL[m]}</th>
@@ -150,7 +160,12 @@ export function ResultsPanel({ selectedTestSetName }: Props) {
                 <td className={styles.num}>{sorted.length - idx}</td>
                 <td className={styles.mono}>{formatDate(r.created_at)}</td>
                 <td>{shortTopologyName(r.topology_name)}</td>
-                <td className={styles.mono}>{formatWeights(r.weights)}</td>
+                <td className={styles.mono} title={isPresetRun(r) ? undefined : 'N/A for custom topology'}>
+                  {isPresetRun(r) ? formatThresholds(r.thresholds) : '—'}
+                </td>
+                <td className={styles.mono} title={isPresetRun(r) ? undefined : 'N/A for custom topology'}>
+                  {isPresetRun(r) ? formatWeights(r.weights) : '—'}
+                </td>
                 {enabledMetrics.map((m) => {
                   const val = r.aggregate_metrics[METRIC_BACKEND_KEY[m]];
                   return (

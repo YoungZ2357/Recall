@@ -53,11 +53,14 @@ class RunConfig(BaseModel):
     / "custom"); when None, the server's default topology was used.
     `weights` mirrors the reranker config keys (alpha/beta/gamma) when those
     were specified in the run's topology spec.
+    `thresholds` captures the retriever and reranker score thresholds:
+    {"vector": <VectorSearcher score_threshold>, "reranker": <Reranker score_threshold>}.
     """
     test_set_name: str
     mode: Literal["prefer_recent", "awaken_forgotten"]
     topology_name: str | None = None
     weights: dict[str, float] | None = None
+    thresholds: dict[str, float] | None = None
 
 
 class EvalReport(BaseModel):
